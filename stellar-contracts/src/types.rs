@@ -96,6 +96,7 @@ pub struct CertificateReinstatedEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CertificateFrozenEvent {
     pub id: String,
+    pub reason: String,
 }
 
 #[contracttype]

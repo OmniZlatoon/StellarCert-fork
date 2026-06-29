@@ -289,7 +289,7 @@ impl CertificateContract {
     }
 
     /// Freeze a certificate
-    pub fn freeze_certificate(env: Env, id: String) {
+    pub fn freeze_certificate(env: Env, id: String, reason: String) {
         let mut cert: Certificate = env
             .storage()
             .persistent()
@@ -302,12 +302,13 @@ impl CertificateContract {
         }
 
         cert.status = CertificateStatus::Frozen;
+        cert.status_reason = Some(reason.clone());
         Self::set_persistent(&env, &DataKey::Certificate(id.clone()), &cert);
 
         // Emit and publish freeze event
         env.events().publish(
             (symbol_short!("frozen"), id.clone()),
-            CertificateFrozenEvent { id },
+            CertificateFrozenEvent { id, reason },
         );
     }
 
