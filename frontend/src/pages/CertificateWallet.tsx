@@ -44,14 +44,18 @@ const CertificateWallet = () => {
     }
 
     const fetchCertificates = async () => {
+      setError(null);
       try {
         const data = await getUserCertificates(user.id);
         if (data) {
           setCertificates(data);
           setPage(1);
         }
-      } catch (error) {
-        console.error("Error fetching certificates:", error);
+      } catch (err) {
+        console.error("Error fetching certificates:", err);
+        setError(
+          "Failed to load your certificates. Please check your connection and try again.",
+        );
       } finally {
         setLoading(false);
       }
