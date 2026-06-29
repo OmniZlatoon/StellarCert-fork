@@ -1129,6 +1129,10 @@ impl CertificateContract {
 
     /// Batch verify multiple certificates
     pub fn batch_verify_certificates(env: Env, ids: Vec<String>) -> VerificationReport {
+        const MAX_BATCH_SIZE: u32 = 100;
+        if ids.len() > MAX_BATCH_SIZE {
+            panic!("Exceeded max batch size");
+        }
         const BASE_VERIFICATION_COST: u64 = 100;
         const COST_PER_CERTIFICATE: u64 = 50;
 
