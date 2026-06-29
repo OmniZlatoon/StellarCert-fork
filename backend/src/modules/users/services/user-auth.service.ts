@@ -122,6 +122,11 @@ export class UserAuthService {
       );
     }
 
+    // Check if account is suspended
+    if (user.status === UserStatus.SUSPENDED) {
+      throw new ForbiddenException('Account is suspended');
+    }
+
     // Check if account is active
     if (!user.isActive) {
       throw new ForbiddenException('Account is deactivated');
