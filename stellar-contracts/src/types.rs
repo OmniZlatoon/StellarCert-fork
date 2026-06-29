@@ -107,6 +107,13 @@ pub struct CertificateUnfrozenEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransferAcceptedEvent {
+    pub transfer_id: String,
+    pub to_owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransferStatus {
     Pending,
     Accepted,

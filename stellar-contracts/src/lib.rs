@@ -558,6 +558,15 @@ impl CertificateContract {
 
         Self::set_persistent(&env, &DataKey::Transfer(transfer_id.clone()), &transfer);
 
+        // Emit the transfer acceptance event
+        env.events().publish(
+            (symbol_short!("accepted"), transfer_id.clone()),
+            TransferAcceptedEvent {
+                transfer_id: transfer_id.clone(),
+                to_owner: to_owner.clone(),
+            },
+        );
+
         // Remove from pending transfers
         let pending = Self::get_pending_transfers(&env, to_owner.clone());
         let mut updated_pending = Vec::<String>::new(&env);
