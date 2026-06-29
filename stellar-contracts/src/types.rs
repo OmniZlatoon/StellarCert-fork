@@ -114,6 +114,15 @@ pub struct TransferAcceptedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransferCompletedEvent {
+    pub transfer_id: String,
+    pub certificate_id: String,
+    pub from_owner: Address,
+    pub to_owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransferStatus {
     Pending,
     Accepted,

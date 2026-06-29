@@ -634,6 +634,17 @@ impl CertificateContract {
         transfer.completed_at = Some(env.ledger().timestamp());
 
         Self::set_persistent(&env, &DataKey::Transfer(transfer_id.clone()), &transfer);
+
+        // Emit a completion event for off-chain systems
+        env.events().publish(
+            (symbol_short!("transfer_done"), transfer_id.clone()),
+            TransferCompletedEvent {
+                transfer_id,
+                certificate_id: cert.id,
+                from_owner: transfer.from_owner,
+                to_owner: cert.owner,
+            },
+        );
     }
 
     /// Reject a pending certificate transfer
