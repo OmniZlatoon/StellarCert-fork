@@ -40,6 +40,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Track the access token in React state so `isAuthenticated` is reactive.
+  // Reading `tokenStorage` directly during render would not re-render when a
+  // silent refresh writes a new token, leaving consumers with stale auth state.
+  const [accessToken, setAccessTokenState] = useState<string | null>(() =>
+    tokenStorage.getAccessToken(),
+  );
 
   // #559 — derive isAuthenticated once per token/user change, not on every render
   const isAuthenticated = useMemo(() => {
@@ -50,16 +56,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     // Check token expiration on app load
     const checkTokenExpiration = () => {
+      const currentToken = tokenStorage.getAccessToken();
+
+      if (currentToken && isTokenExpired(currentToken)) {
+        // Token is expired, clear auth state
       const accessToken = tokenStorage.getAccessToken();
 
       if (accessToken && isTokenExpired(accessToken)) {
         console.warn('Access token expired, clearing authentication state');
         tokenStorage.clearTokens();
         setUserState(null);
+        setAccessTokenState(null);
         localStorage.removeItem('user');
+      } else if (!currentToken) {
+        // No token, clear user state
       } else if (!accessToken) {
         setUserState(null);
+        setAccessTokenState(null);
         localStorage.removeItem('user');
+      } else {
+        // Valid token — keep reactive state in sync with storage.
+        setAccessTokenState(currentToken);
       }
 
       setIsLoading(false);
@@ -67,6 +84,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     checkTokenExpiration();
 
+    // Keep AuthContext in sync when apiClient silently refreshes the access
+    // token. Updating the reactive token (and user, when the refresh response
+    // carries one) re-renders consumers so `isAuthenticated` reflects the new
+    // valid token immediately, instead of waiting for the 5-minute check (#560).
+    setTokenRefreshCallback((newAccessToken, refreshedUser) => {
+      if (isTokenExpired(newAccessToken)) {
+        return;
+      }
+      setAccessTokenState(newAccessToken);
+      if (refreshedUser) {
+        setUserState(refreshedUser);
+      }
+      setIsLoading(false);
+    });
+
+    // Set up periodic token expiration check (every 5 minutes)
+    const interval = setInterval(checkTokenExpiration, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(interval);
+      // Drop the callback so a torn-down provider can't update stale state.
+      setTokenRefreshCallback(() => {});
+    };
     const interval = setInterval(checkTokenExpiration, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -87,6 +127,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     localStorage.removeItem('user');
     tokenStorage.clearTokens();
+    setAccessTokenState(null);
   }, [user]);
 
   const setUser = (nextUser: User | null) => setUserState(nextUser);
@@ -94,6 +135,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const clearAuth = () => {
     setUserState(null);
     tokenStorage.clearTokens();
+    setAccessTokenState(null);
     localStorage.removeItem('user');
   };
 
