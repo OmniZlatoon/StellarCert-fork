@@ -3,12 +3,12 @@ import { useAuth } from "../context/AuthContext";
 import { UserRole } from "../api/types";
 
 const roleRoutes: Record<UserRole, string[]> = {
-  [UserRole.RECIPIENT]: ["/wallet"],
-  [UserRole.VERIFIER]: ["/wallet", "/verify"],
-  [UserRole.ISSUER]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates"],
-  [UserRole.ADMIN]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates"],
-  [UserRole.AUDITOR]: ["/verify", "/certificates"],
-  [UserRole.USER]: ["/wallet"],
+  [UserRole.RECIPIENT]: ["/wallet", "/profile", "/preferences"],
+  [UserRole.VERIFIER]: ["/wallet", "/verify", "/profile", "/preferences"],
+  [UserRole.ISSUER]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.ADMIN]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.AUDITOR]: ["/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.USER]: ["/wallet", "/profile", "/preferences"],
 };
 
 interface ProtectedRouteProps {
