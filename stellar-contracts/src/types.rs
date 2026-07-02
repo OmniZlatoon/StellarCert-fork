@@ -96,12 +96,29 @@ pub struct CertificateReinstatedEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CertificateFrozenEvent {
     pub id: String,
+    pub reason: String,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CertificateUnfrozenEvent {
     pub id: String,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransferAcceptedEvent {
+    pub transfer_id: String,
+    pub to_owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransferCompletedEvent {
+    pub transfer_id: String,
+    pub certificate_id: String,
+    pub from_owner: Address,
+    pub to_owner: Address,
 }
 
 #[contracttype]

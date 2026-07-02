@@ -289,7 +289,7 @@ impl CertificateContract {
     }
 
     /// Freeze a certificate
-    pub fn freeze_certificate(env: Env, id: String) {
+    pub fn freeze_certificate(env: Env, id: String, reason: String) {
         let mut cert: Certificate = env
             .storage()
             .persistent()
@@ -302,12 +302,13 @@ impl CertificateContract {
         }
 
         cert.status = CertificateStatus::Frozen;
+        cert.status_reason = Some(reason.clone());
         Self::set_persistent(&env, &DataKey::Certificate(id.clone()), &cert);
 
         // Emit and publish freeze event
         env.events().publish(
             (symbol_short!("frozen"), id.clone()),
-            CertificateFrozenEvent { id },
+            CertificateFrozenEvent { id, reason },
         );
     }
 
@@ -557,6 +558,15 @@ impl CertificateContract {
 
         Self::set_persistent(&env, &DataKey::Transfer(transfer_id.clone()), &transfer);
 
+        // Emit the transfer acceptance event
+        env.events().publish(
+            (symbol_short!("accepted"), transfer_id.clone()),
+            TransferAcceptedEvent {
+                transfer_id: transfer_id.clone(),
+                to_owner: to_owner.clone(),
+            },
+        );
+
         // Remove from pending transfers
         let pending = Self::get_pending_transfers(&env, to_owner.clone());
         let mut updated_pending = Vec::<String>::new(&env);
@@ -624,6 +634,17 @@ impl CertificateContract {
         transfer.completed_at = Some(env.ledger().timestamp());
 
         Self::set_persistent(&env, &DataKey::Transfer(transfer_id.clone()), &transfer);
+
+        // Emit a completion event for off-chain systems
+        env.events().publish(
+            (symbol_short!("transfer_done"), transfer_id.clone()),
+            TransferCompletedEvent {
+                transfer_id,
+                certificate_id: cert.id,
+                from_owner: transfer.from_owner,
+                to_owner: cert.owner,
+            },
+        );
     }
 
     /// Reject a pending certificate transfer
@@ -1129,6 +1150,10 @@ impl CertificateContract {
 
     /// Batch verify multiple certificates
     pub fn batch_verify_certificates(env: Env, ids: Vec<String>) -> VerificationReport {
+        const MAX_BATCH_SIZE: u32 = 100;
+        if ids.len() > MAX_BATCH_SIZE {
+            panic!("Exceeded max batch size");
+        }
         const BASE_VERIFICATION_COST: u64 = 100;
         const COST_PER_CERTIFICATE: u64 = 50;
 
