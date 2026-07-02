@@ -12,5 +12,5 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
   logging: process.env.NODE_ENV !== 'production',
   autoLoadEntities: true,
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
-  migrationsRun: false,
+  migrationsRun: true,
 };
