@@ -78,6 +78,26 @@ describe('UsersController', () => {
     expect(controller).toBeDefined();
   });
 
+  it('should declare profile stats/activity routes before the wildcard user id route', () => {
+    const prototype = UsersController.prototype as unknown as Record<
+      string,
+      unknown
+    >;
+    const methodNames = Object.getOwnPropertyNames(prototype).filter(
+      (name) => name !== 'constructor' && typeof prototype[name] === 'function',
+    );
+
+    const statsIndex = methodNames.indexOf('getIssuerStats');
+    const activityIndex = methodNames.indexOf('getIssuerActivity');
+    const wildcardIndex = methodNames.indexOf('findOne');
+
+    expect(statsIndex).toBeGreaterThanOrEqual(0);
+    expect(activityIndex).toBeGreaterThanOrEqual(0);
+    expect(wildcardIndex).toBeGreaterThanOrEqual(0);
+    expect(statsIndex).toBeLessThan(wildcardIndex);
+    expect(activityIndex).toBeLessThan(wildcardIndex);
+  });
+
   describe('Authentication Endpoints', () => {
     describe('register', () => {
       it('should register a new user', async () => {
