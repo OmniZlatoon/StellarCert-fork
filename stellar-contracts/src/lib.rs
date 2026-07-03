@@ -1020,6 +1020,7 @@ cert.owner = new_owner;
         if request.status != RequestStatus::Approved {
             return false;
         }
+        request.issuer.require_auth();
 
         // Issue the actual certificate
         Self::issue_certificate(
