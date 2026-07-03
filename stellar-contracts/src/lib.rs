@@ -598,14 +598,31 @@ impl CertificateContract {
             panic!("Transfer must be accepted before completion");
         }
 
-        // Update certificate ownership
-        let mut cert: Certificate = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Certificate(transfer.certificate_id.clone()))
-            .expect("Certificate not found");
+         let mut cert: Certificate = env
+    .storage()
+    .persistent()
+    .get(&DataKey::Certificate(transfer.certificate_id.clone()))
+    .expect("Certificate not found");
 
-        cert.owner = transfer.to_owner.clone();
+let previous_owner = cert.owner.clone();
+let new_owner = transfer.to_owner.clone();
+
+// Remove certificate from old owner's index
+Self::remove_cert_id(
+    &env,
+    DataKey::OwnerCertIds(previous_owner),
+    transfer.certificate_id.clone(),
+);
+
+// Add certificate to new owner's index
+Self::append_cert_id(
+    &env,
+    DataKey::OwnerCertIds(new_owner.clone()),
+    transfer.certificate_id.clone(),
+);
+
+// Update certificate ownership
+cert.owner = new_owner;
 
         // Revoke if required
         if transfer.require_revocation {
@@ -1326,6 +1343,24 @@ impl CertificateContract {
             Self::set_persistent(env, &key, &ids);
         }
     }
+    
+    fn remove_cert_id(env: &Env, key: DataKey, cert_id: String) {
+    let ids: Vec<String> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Vec::<String>::new(env));
+
+    let mut updated = Vec::<String>::new(env);
+
+    for id in ids.iter() {
+        if id != cert_id {
+            updated.push_back(id);
+        }
+    }
+
+    Self::set_persistent(env, &key, &updated);
+}
 
     fn append_request_id(env: &Env, key: DataKey, request_id: String) {
         let mut request_ids = Self::get_request_ids(env, key.clone());
