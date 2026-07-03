@@ -1124,7 +1124,7 @@ cert.owner = new_owner;
         if request.proposer != requester {
             panic!("Only proposer can cancel");
         }
-        request.status = RequestStatus::Rejected;
+        request.status = RequestStatus::Cancelled;
         Self::set_persistent(&env, &DataKey::PendingRequest(request_id), &request);
         true
     }
