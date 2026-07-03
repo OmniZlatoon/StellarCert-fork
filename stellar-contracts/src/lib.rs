@@ -854,6 +854,7 @@ cert.owner = new_owner;
         Self::set_persistent(&env, &DataKey::MultisigConfig(issuer), &config);
     }
 
+    issuer.require_auth();
     pub fn propose_certificate(
         env: Env,
         request_id: String,
