@@ -8,6 +8,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { DatabaseHealthIndicator } from './indicators/database.health';
 import { StellarHealthIndicator } from './indicators/stellar.health';
+import { RedisHealthIndicator } from './indicators/redis.health';
 import { LoggingService } from "../../common/logging/logging.service";
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -18,7 +19,9 @@ export class HealthController {
   constructor(
     private health: HealthCheckService,
     private databaseHealth: DatabaseHealthIndicator,
-    private stellarHealth: StellarHealthIndicator, private readonly logger: LoggingService
+    private stellarHealth: StellarHealthIndicator,
+    private redisHealth: RedisHealthIndicator,
+    private readonly logger: LoggingService
   ) {}
 
   /**
@@ -36,6 +39,7 @@ export class HealthController {
     try {
       return await this.health.check([
         () => this.stellarHealth.isHealthy(),
+        () => this.redisHealth.isHealthy(),
       ]);
     } catch (error) {
       this.logger.error('Health check failed', error);
@@ -72,6 +76,7 @@ export class HealthController {
       return await this.health.check([
         () => this.databaseHealth.isHealthy(),
         () => this.stellarHealth.isHealthy(),
+        () => this.redisHealth.isHealthy(),
       ]);
     } catch (error) {
       this.logger.error('Readiness check failed', error);
@@ -159,6 +164,36 @@ export class HealthController {
         {
           status: HttpStatus.SERVICE_UNAVAILABLE,
           message: 'Stellar network is unavailable',
+          error,
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  /**
+   * Redis health check
+   */
+  @Get('redis')
+  @HealthCheck()
+  @ApiOperation({ summary: 'Check Redis connectivity' })
+  @ApiResponse({
+    status: 200,
+    description: 'Redis is healthy',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Redis is unavailable',
+  })
+  async redisCheck() {
+    try {
+      return await this.health.check([() => this.redisHealth.isHealthy()]);
+    } catch (error) {
+      this.logger.error('Redis health check failed', error);
+      throw new HttpException(
+        {
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          message: 'Redis is unavailable',
           error,
         },
         HttpStatus.SERVICE_UNAVAILABLE,
