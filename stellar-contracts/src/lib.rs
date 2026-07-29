@@ -17,6 +17,8 @@ pub use crl::*;
 
 pub mod persistent;
 
+pub mod storage;
+
 mod admin_multisig;
 pub use admin_multisig::*;
 
@@ -145,6 +147,7 @@ impl CertificateContract {
     }
 
     /// Issue a new certificate
+    #[allow(clippy::too_many_arguments)]
     pub fn issue_certificate(
         env: Env,
         id: String,
@@ -377,6 +380,7 @@ impl CertificateContract {
     }
 
     /// Reissue a certificate with new version (creates child certificate)
+    #[allow(clippy::too_many_arguments)]
     pub fn reissue_certificate(
         env: Env,
         old_id: String,
@@ -458,6 +462,7 @@ impl CertificateContract {
     // --- Certificate Transfer Functions ---
 
     /// Initiate a certificate ownership transfer
+    #[allow(clippy::too_many_arguments)]
     pub fn initiate_transfer(
         env: Env,
         transfer_id: String,
