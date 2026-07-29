@@ -8,7 +8,7 @@
 
 const CERT_ID_MIN_LENGTH = 8;
 const CERT_ID_MAX_LENGTH = 128;
-const CERT_ID_PATTERN = /^[A-Za-z0-9_\-]+$/;
+const CERT_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export interface CertIdValidationResult {
   valid: boolean;
