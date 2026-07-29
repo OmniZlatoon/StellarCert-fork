@@ -1434,3 +1434,16 @@ cert.owner = new_owner;
         }
     }
 }
+
+
+@@ -1,4 +1,4 @@
+-use soroban_sdk::{symbol_short, Address, Env, String};
++use soroban_sdk::{symbol_short, Address, Env, String, Symbol};
+
+ // ...
+
+ // Emit a completion event for off-chain systems
+ env.events().publish(
+-    (symbol_short!("transfer_done"), transfer_id.clone()),
++    (Symbol::new(&env, "transfer_done"), transfer_id.clone()),
+ );
