@@ -83,12 +83,13 @@ describe('CertificateStatsService', () => {
       mockVerificationRepo.count.mockResolvedValue(0);
     });
 
-    it('joins the real Issuer entity and selects/groups by its actual "name" column', async () => {
+    it('joins the real User entity and selects/groups by its actual firstName/lastName columns', async () => {
       const trendQB = buildTrendQueryBuilder();
       const topIssuersQB = buildTopIssuersQueryBuilder([
         {
           issuerId: 'issuer-1',
-          issuerName: 'Acme University',
+          firstName: 'Acme',
+          lastName: 'University',
           certificateCount: '3',
         },
       ]);
@@ -99,15 +100,20 @@ describe('CertificateStatsService', () => {
 
       const result = await service.getStatistics({});
 
-      // Certificate.issuer is a relation to the Issuer entity, which has a
-      // real `name` column (unlike User, which only has firstName/lastName).
-      // The query must join it and select/group by that real column.
+      // Certificate.issuer is a ManyToOne relation to the User entity, which
+      // has real `firstName`/`lastName` columns (User has no `name` column).
+      // The query must join it and select/group by those real columns.
       expect(topIssuersQB.leftJoin).toHaveBeenCalledWith('cert.issuer', 'issuer');
       expect(topIssuersQB.addSelect).toHaveBeenCalledWith(
-        'issuer.name',
-        'issuerName',
+        'issuer.firstName',
+        'firstName',
       );
-      expect(topIssuersQB.addGroupBy).toHaveBeenCalledWith('issuer.name');
+      expect(topIssuersQB.addSelect).toHaveBeenCalledWith(
+        'issuer.lastName',
+        'lastName',
+      );
+      expect(topIssuersQB.addGroupBy).toHaveBeenCalledWith('issuer.firstName');
+      expect(topIssuersQB.addGroupBy).toHaveBeenCalledWith('issuer.lastName');
 
       expect(result.topIssuers).toEqual([
         {
