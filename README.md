@@ -1,6 +1,32 @@
 StellarCert - Wave Program Certificate System
 A decentralized certificate program management system built on the Stellar blockchain using React, NestJS, and Stellar SDK. This system allows for issuing, verifying, and managing digital certificates program credentials in a secure, transparent, and immutable manner.
 
+🚀 Getting Started
+
+Get the stack running from a clean clone:
+
+```bash
+# 1. Install root dependencies (this does NOT populate backend/node_modules)
+npm install
+
+# 2. Install backend dependencies separately
+(cd backend && npm install)
+
+# 3. Start Postgres and Redis
+docker compose up -d postgres redis
+
+# 4. Copy environment file
+cp backend/.env.example backend/.env
+
+# 5. Start development servers (backend :3000, frontend :5173)
+npm run dev
+
+# 6. Verify the API is running
+curl http://localhost:3000/api/v1/health
+```
+
+> **Note on env vars:** The app starts with warnings for missing Stellar, Soroban, and storage config — this is fine for local development. Only `JWT_SECRET` and the database config (`DB_*`) are required to boot. See the [Configuration](#configuration) section for details.
+
 🌟 Features
 Core Features
 Certificate Issuance: Authorized issuers can create digital certificates credentials
@@ -128,11 +154,9 @@ Node.js (v18 or higher)
 
 npm or yarn or pnpm
 
-Docker & Docker Compose (optional, for containerization)
+Docker & Docker Compose (required for Postgres and Redis in local dev)
 
 Stellar CLI Tools (for contract deployment)
-
-PostgreSQL (or Docker for database)
 
 Stellar Requirements
 Stellar Testnet/Livenet account
@@ -212,6 +236,17 @@ cd stellar-contracts
 cargo test
 🔧 Configuration
 Environment Variables
+
+**Required to boot:**
+- `JWT_SECRET` — any string works for local development (e.g. `dev-secret`)
+- `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` — defaults in `.env.example` match `docker compose`
+
+**Optional (the app will start with warnings):**
+- `STELLAR_ISSUER_SECRET_KEY` / `STELLAR_ISSUER_PUBLIC_KEY` — only needed for certificate operations
+- `SENTRY_DSN` / `ENABLE_SENTRY` — error reporting
+- `STORAGE_*` — file storage (S3/MinIO)  
+- `AUDIT_RETENTION_DAYS`, `DUPLICATE_DETECTION_*` — feature toggles with safe defaults
+
 Backend (.env):
 
 env
