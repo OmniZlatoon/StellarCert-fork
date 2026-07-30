@@ -2,9 +2,15 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
-const navigateMock = vi.fn();
-const createCertificateMock = vi.fn();
-const fetchUserByEmailMock = vi.fn();
+const {
+  navigateMock,
+  createCertificateMock,
+  fetchUserByEmailMock,
+} = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  createCertificateMock: vi.fn(),
+  fetchUserByEmailMock: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
