@@ -76,7 +76,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
       // Remove sensitive information in production
       if (this.isProduction) {
-        delete errorResponse.details;
+        if (errorResponse.errorCode !== 'VALIDATION_ERROR') {
+          delete errorResponse.details;
+        }
         delete errorResponse.stack;
       }
     }
