@@ -54,7 +54,7 @@
     "cors": "^2.8.5",
     "handlebars": "^4.7.8",
     "keyv": "^5.0.0",
-    "nodemailer": "^6.9.14",
+    "nodemailer": "^9.0.3",
     "otplib": "^12.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -66,7 +66,7 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.28",
+    "typeorm": "^0.3.31",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -81,7 +81,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
-    "@types/nodemailer": "^6.4.15",
+    "@types/nodemailer": "^8.0.1",
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/pdfkit": "^0.17.4",

@@ -45,7 +45,7 @@
     "@nestjs/platform-express": "^11.1.12",
     "bull": "^4.16.5",
     "handlebars": "^4.7.9",
-    "nodemailer": "^7.0.12",
+    "nodemailer": "^9.0.3",
     "puppeteer": "^24.42.0"
   }
 }
