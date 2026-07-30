@@ -132,7 +132,10 @@ export default function VerifyCertificate(): JSX.Element {
           qrScannerRef.current?.clear();
           qrScannerRef.current = null;
         },
-        (error) => {
+        () => {
+          // Called continuously while no QR code is in view; intentionally
+          // ignored rather than surfaced, since it fires on nearly every
+          // scan frame and isn't a user-actionable error.
         }
       );
     }
