@@ -135,7 +135,7 @@ export class CertificateStatsService {
     const topIssuersData = await query
       .groupBy('cert.issuerId')
       .addGroupBy('issuer.name')
-      .orderBy('certificateCount', 'DESC')
+      .orderBy('"certificateCount"', 'DESC')
       .limit(10)
       .getRawMany();
 
