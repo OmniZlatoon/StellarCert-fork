@@ -4,23 +4,39 @@ use soroban_sdk::{
 };
 
 mod types;
-pub use types::*;
+// Explicit re-exports replace `pub use types::*` to avoid ambiguous_glob_reexports
+pub use types::{
+    Certificate, CertPaginatedResult, CertificateIssuedEvent, CertificateReinstatedEvent,
+    CertificateRevokedEvent, CertificateStatus, CertificateSuspendedEvent,
+    CertificateTransfer, CertificateUnfrozenEvent, CertificateFrozenEvent,
+    CertificateVersion, ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus,
+    PaginatedResult, Pagination, PendingRequest, RequestStatus, SignatureResult,
+    TransferAcceptedEvent, TransferCompletedEvent, TransferHistoryEntry, TransferStatus,
+    VerificationReport, VerificationResult,
+};
 
 // mod metadata;
 // pub use metadata::*;
 
 mod multisig;
-pub use multisig::*;
+// MultisigCertificateContract is the only public item in multisig.rs
+pub use multisig::MultisigCertificateContract;
 
 mod crl;
-pub use crl::*;
+// Explicit re-exports replace `pub use crl::*`
+pub use crl::{CRLContract, CRLInfo, RevocationInfo, RevocationReason};
 
 pub mod persistent;
 
 pub mod storage;
 
 mod admin_multisig;
-pub use admin_multisig::*;
+// Explicit re-exports replace `pub use admin_multisig::*`
+pub use admin_multisig::{
+    AdminAction, AdminMultisigConfig, AdminMultisigContract, AdminMultisigDataKey,
+    AdminProposal, AdminProposalStatus, ProposalApprovedEvent, ProposalCanceledEvent,
+    ProposalCreatedEvent,
+};
 
 #[cfg(test)]
 mod admin_multisig_test;
@@ -788,6 +804,7 @@ cert.owner = new_owner;
 
     // --- Multisig Functions ---
 
+    #[allow(clippy::too_many_arguments)] // Soroban contract entry points cannot use struct params
     pub fn init_multisig_config(
         env: Env,
         issuer: Address,
@@ -1080,8 +1097,7 @@ cert.owner = new_owner;
                 .storage()
                 .persistent()
                 .get::<_, MultisigConfig>(&DataKey::MultisigConfig(request.issuer.clone()))
-                .map(|c| c.signers.contains(&caller))
-                .unwrap_or(false);
+                .map_or(false, |c| c.signers.contains(&caller));
         if !is_authorized {
             panic!("Not authorized to view this request");
         }

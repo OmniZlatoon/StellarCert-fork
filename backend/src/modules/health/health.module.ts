@@ -5,6 +5,7 @@ import { MetricsController } from './metrics.controller';
 import { RateLimitController } from './rate-limit.controller';
 import { DatabaseHealthIndicator } from './indicators/database.health';
 import { StellarHealthIndicator } from './indicators/stellar.health';
+import { RedisHealthIndicator } from './indicators/redis.health';
 import { MetricsService } from '../../common/monitoring/metrics.service';
 import { CommonModule } from '../../common/common.module';
 import { ConfigModule } from '@nestjs/config';
@@ -17,6 +18,7 @@ import { IpRateLimitGuard } from '../../common/guards/ip-rate-limit.guard';
   providers: [
     DatabaseHealthIndicator,
     StellarHealthIndicator,
+    RedisHealthIndicator,
     MetricsService,
     StellarService,
     IpRateLimitGuard,

@@ -20,6 +20,7 @@ impl MultisigCertificateContract {
     }
 
     /// Initialize multisig configuration for an issuer
+    #[allow(clippy::too_many_arguments)] // Soroban contract entry points cannot use struct params
     pub fn init_multisig_config(
         env: Env,
         issuer: Address,
