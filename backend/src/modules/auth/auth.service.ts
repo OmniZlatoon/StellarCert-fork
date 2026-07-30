@@ -13,6 +13,7 @@ import { LogoutDto } from './dto/logout.dto';
 import { LogoutResponseDto } from './dto/logout-response.dto';
 import { JwtManagementService } from './services/jwt.service';
 import { TwoFactorService } from './services/two-factor.service';
+import { UserStatus } from '../users/entities/user.entity';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -50,12 +51,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.isActive) {
-      throw new ForbiddenException('Account is deactivated');
+    if (user.status === UserStatus.SUSPENDED) {
+      throw new ForbiddenException('Account is suspended');
     }
 
-    if (!user.emailVerified) {
-      throw new ForbiddenException('Email not verified');
+    if (!user.isActive) {
+      throw new ForbiddenException('Account is deactivated');
     }
 
     // If 2FA is enabled, issue a short-lived pre-auth token instead of a full access token
@@ -68,16 +69,26 @@ export class AuthService {
     }
 
     const payload = { email: user.email, sub: user.id, role: user.role };
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = await this.jwtManagementService.generateAccessToken(payload);
+    const refreshToken = await this.jwtManagementService.generateRefreshToken(payload);
+
+    // Update the refresh token in the database
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 12);
+    await this.userRepository.update(user.id, {
+      refreshToken: hashedRefreshToken,
+    });
 
     return {
       accessToken,
+      refreshToken,
       expiresIn: 3600,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified ?? user.emailVerified ?? false,
       },
     };
   }
@@ -104,20 +115,31 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
 
-    const accessToken = this.jwtService.sign({
+    const payloadForToken = {
       email: user.email,
       sub: user.id,
       role: user.role,
+    };
+    const accessToken = await this.jwtManagementService.generateAccessToken(payloadForToken);
+    const refreshToken = await this.jwtManagementService.generateRefreshToken(payloadForToken);
+
+    // Update the refresh token in the database
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 12);
+    await this.userRepository.update(user.id, {
+      refreshToken: hashedRefreshToken,
     });
 
     return {
       accessToken,
+      refreshToken,
       expiresIn: 3600,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified ?? false,
       },
     };
   }
@@ -138,11 +160,14 @@ export class AuthService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
+      requiresEmailVerification: !user.isEmailVerified,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified ?? false,
       },
     };
   }
@@ -205,6 +230,8 @@ export class AuthService {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
+          role: user.role,
+          isEmailVerified: user.isEmailVerified ?? false,
         },
       };
     } catch (error) {

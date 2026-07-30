@@ -9,6 +9,7 @@ import { Verification } from '../certificate/entities/verification.entity';
 import { Issuer } from '../issuers/entities/issuer.entity';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { CertificateModule } from '../certificate/certificate.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from '../users/users.module';
     }),
     AuthModule,
     UsersModule,
+    CertificateModule,
   ],
   controllers: [AdminAnalyticsController],
   providers: [AdminAnalyticsService],

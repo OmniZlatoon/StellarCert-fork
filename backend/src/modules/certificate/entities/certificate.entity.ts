@@ -5,10 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  JoinColumn,
   Index,
 } from 'typeorm';
 
-import { Issuer } from '../../issuers/entities/issuer.entity';
+import { User } from '../../users/entities/user.entity';
 import { CertificateStatus } from '../constants/certificate-status.enum';
 
 export interface VerificationHistoryRecord {
@@ -29,6 +30,8 @@ export interface CertificateMetadata {
   revokedAt?: Date;
   freezeReason?: string;
   frozenAt?: Date;
+  freezeDurationDays?: number;
+  unfreezeAt?: Date;
   unfreezeReason?: string;
   unfrozenAt?: Date;
   additionalFields?: Record<string, unknown>;
@@ -107,6 +110,7 @@ export class Certificate {
   stellarTransactionId?: string;
 
   @Column({ nullable: true, unique: true })
+  @Index()
   stellarTransactionHash?: string;
 
   @Column({ type: 'text', nullable: true })
@@ -157,8 +161,9 @@ export class Certificate {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @ManyToOne(() => Issuer)
-  issuer: Issuer;
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'issuerId' })
+  issuer: User;
 
   // ─── Business logic helpers ──────────────────────────────────────────────────
 

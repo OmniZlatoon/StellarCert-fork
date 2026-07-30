@@ -1,44 +1,65 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { UserRole } from "../api/types";
 
-// Define allowed routes based on user roles
 const roleRoutes: Record<UserRole, string[]> = {
-  [UserRole.RECIPIENT]: ["/wallet"],
-  [UserRole.VERIFIER]: ["/wallet", "/verify"],
-  [UserRole.ISSUER]: ["/issue", "/wallet", "/revoke", "/verify"],
-  [UserRole.ADMIN]: ["/issue", "/wallet", "/revoke", "/verify"],
+  [UserRole.RECIPIENT]: ["/wallet", "/profile", "/preferences"],
+  [UserRole.VERIFIER]: ["/wallet", "/verify", "/profile", "/preferences"],
+  [UserRole.ISSUER]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.ADMIN]: ["/issue", "/wallet", "/revoke", "/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.AUDITOR]: ["/verify", "/certificates", "/profile", "/preferences"],
+  [UserRole.USER]: ["/wallet", "/profile", "/preferences"],
 };
 
-// Define props type for ProtectedRoute
+/**
+ * Paths that never require authentication.
+ *
+ * Membership is tested by **exact** string equality (Set lookup), never by
+ * prefix. Listing `/verify` here therefore cannot make a future `/verify-*`
+ * route (e.g. `/verify-email`, `/verify-payment`) public by accident — such a
+ * route falls through to the normal auth/role checks unless it is added here
+ * explicitly.
+ */
+const PUBLIC_PATHS: ReadonlySet<string> = new Set(["/verify"]);
+
 interface ProtectedRouteProps {
   allowedRoles?: UserRole[];
 }
 
+/**
+ * Returns true when `pathname` equals one of the allowed base paths or is a
+ * sub-route of one. A path matches when it equals an allowed path exactly, or
+ * begins with that path followed by a `/` segment boundary.
+ *
+ * The `/` boundary prevents false positives: `/certificates/abc-123` matches
+ * `/certificates`, but `/certificatesfoo` does not.
+ */
+const isPathAllowed = (pathname: string, allowedPaths: string[]): boolean =>
+  allowedPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
-  const currentPath: string = window.location.pathname;
-
-  // Allow public access to /verify
-  if (currentPath === "/verify") return <Outlet />;
-
-  // Use centralized auth context instead of localStorage
   const { user } = useAuth();
+  const location = useLocation();
 
-  // If no user is logged in, redirect to login page
-  if (!user) return <Navigate to="/login" replace />;
+  // Public paths require no auth. Exact match only — see PUBLIC_PATHS.
+  if (PUBLIC_PATHS.has(location.pathname)) return <Outlet />;
 
-  // Get user role
-  const userRole: UserRole = (user as any).role;
+  // Not logged in — redirect to login and preserve destination
+  if (!user) {
+    return <Navigate to={`/login?returnUrl=${encodeURIComponent(location.pathname)}`} replace />;
+  }
 
-  // If a caller provided an explicit list of allowed roles, use that check first
+  const userRole = user.role as UserRole;
+
   if (allowedRoles) {
     if (!allowedRoles.includes(userRole)) {
       return <Navigate to="/" replace />;
     }
   } else {
-    // Fallback: use hard-coded route map for backwards compatibility
-    const allowedRoutes: string[] = roleRoutes[userRole] || [];
-    if (!allowedRoutes.includes(currentPath)) {
+    const allowedPaths: string[] = roleRoutes[userRole] ?? [];
+    if (!isPathAllowed(location.pathname, allowedPaths)) {
       return <Navigate to="/" replace />;
     }
   }

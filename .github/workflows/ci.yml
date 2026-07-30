@@ -32,6 +32,17 @@ jobs:
             contracts:
               - 'stellar-contracts/**'
 
+  conflict-markers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for merge conflict markers
+        run: |
+          if git grep -nE '^(<{7}|={7}|>{7}|\|{7})( |$)' -- . ':!*.md'; then
+            echo "Merge conflict markers found"
+            exit 1
+          fi
+
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
@@ -50,6 +61,16 @@ jobs:
             frontend/package-lock.json
       - name: Install frontend dependencies
         run: npm ci
+      - name: Check frontend environment variables
+        run: |
+          node -e "
+          const required = ['VITE_API_URL'];
+          const missing = required.filter(key => !process.env[key]);
+          if (missing.length) {
+            console.error('Missing required environment variables:', missing.join(', '));
+            process.exit(1);
+          }
+          "
       - name: Build frontend
         run: npm run build
 
@@ -71,6 +92,16 @@ jobs:
             backend/package-lock.json
       - name: Install backend dependencies
         run: npm ci
+      - name: Validate backend environment
+        run: |
+          node -e "
+          const required = ['STELLAR_ISSUER_SECRET_KEY', 'STELLAR_ISSUER_PUBLIC_KEY'];
+          const missing = required.filter(key => !process.env[key]);
+          if (missing.length) {
+            console.error('Missing required environment variables:', missing.join(', '));
+            process.exit(1);
+          }
+          "
       - name: Typecheck backend
         run: npm run typecheck
       - name: Build backend
@@ -86,10 +117,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: stellar-contracts
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
       - name: Build contracts
         run: cargo build
       - name: Test contracts

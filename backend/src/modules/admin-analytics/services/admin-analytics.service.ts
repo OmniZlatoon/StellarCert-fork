@@ -18,6 +18,7 @@ import {
   UserRegistrationTrendDto,
   CertificateIssuanceTrendDto,
 } from '../dto/admin-analytics.dto';
+import { CertificateStatsService } from '../../certificate/services/stats.service';
 
 @Injectable()
 export class AdminAnalyticsService {
@@ -34,6 +35,7 @@ export class AdminAnalyticsService {
     private issuerRepo: Repository<Issuer>,
     @Inject(CACHE_MANAGER)
     private cacheManager: Cache,
+    private certificateStatsService: CertificateStatsService,
   ) {}
 
   /**
@@ -170,36 +172,16 @@ export class AdminAnalyticsService {
       where: dateFilter.where,
     });
 
-    const topIssuersData = this.certificateRepo
-      .createQueryBuilder('cert')
-      .select('cert.issuerId', 'issuerId')
-      .addSelect('issuer.name', 'issuerName')
-      .addSelect('COUNT(*)', 'certificateCount')
-      .leftJoin('cert.issuer', 'issuer');
+    const topIssuersBase = await this.certificateStatsService.getTopIssuersData(
+      dateFilter,
+      10,
+    );
 
-    if (dateFilter.startDate && dateFilter.endDate) {
-      topIssuersData.where('cert.issuedAt BETWEEN :start AND :end', {
-        start: dateFilter.startDate,
-        end: dateFilter.endDate,
-      });
-    }
-
-    const result = await topIssuersData
-      .groupBy('cert.issuerId')
-      .addGroupBy('issuer.name')
-      .orderBy('certificateCount', 'DESC')
-      .limit(10)
-      .getRawMany();
-
-    return result.map((item) => ({
-      issuerId: item.issuerId,
-      issuerName: item.issuerName || 'Unknown',
-      certificateCount: parseInt(item.certificateCount, 10),
+    return topIssuersBase.map((item) => ({
+      ...item,
       percentage:
         totalCerts > 0
-          ? Math.round(
-              (parseInt(item.certificateCount, 10) / totalCerts) * 100 * 10,
-            ) / 10
+          ? Math.round((item.certificateCount / totalCerts) * 100 * 10) / 10
           : 0,
     }));
   }

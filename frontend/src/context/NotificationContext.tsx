@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { apiClient, API_URL } from '../api';
 import { tokenStorage } from '../api/tokens';
 
@@ -24,6 +24,15 @@ interface NotificationContextProps {
 
 const NotificationContext = createContext<NotificationContextProps | undefined>(undefined);
 
+// #562 — derive socket origin reliably instead of fragile string.replace()
+const getSocketOrigin = (): string => {
+    try {
+        return new URL(API_URL).origin;
+    } catch {
+        return API_URL;
+    }
+};
+
 /* eslint-disable react-refresh/only-export-components */
 export const useNotifications = () => {
     const context = useContext(NotificationContext);
@@ -33,11 +42,14 @@ export const useNotifications = () => {
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    // #563 — keep socket ref so we can reconnect on token rotation
+    const socketRef = useRef<Socket | null>(null);
 
     const fetchNotifications = async () => {
         try {
             const token = tokenStorage.getAccessToken();
             if (!token) return;
+
             const data = await apiClient<Notification[]>('/notifications');
             setNotifications(data);
         } catch (error) {
@@ -45,26 +57,57 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
     };
 
+    const connectSocket = (token: string) => {
+        // Disconnect any existing socket before creating a new one
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+        }
+
+        const newSocket = io(getSocketOrigin(), {
+            auth: { token },
+        });
+
+        newSocket.on('newNotification', (notification: Notification) => {
+            setNotifications((prev) => [notification, ...prev]);
+        });
+
+        socketRef.current = newSocket;
+    };
+
     useEffect(() => {
         const token = tokenStorage.getAccessToken();
         if (!token) return;
 
         fetchNotifications();
+        connectSocket(token);
 
-        const socketUrl = API_URL.replace('/api/v1', '');
-        const newSocket = io(socketUrl, { auth: { token } });
+        // #563 — reconnect with the new token whenever it is rotated.
+        // tokenStorage.setAccessToken writes to localStorage, so we listen for
+        // the storage event which fires in the same tab via a custom dispatch
+        // or a cross-tab write.
+        const handleTokenRotation = (e: StorageEvent) => {
+            if (e.key === 'accessToken' && e.newValue && e.newValue !== e.oldValue) {
+                connectSocket(e.newValue);
+            }
+        };
 
-        newSocket.on('newNotification', (notification: Notification) => {
-            setNotifications(prev => [notification, ...prev]);
-        });
+        window.addEventListener('storage', handleTokenRotation);
 
-        return () => { newSocket.disconnect(); };
+        return () => {
+            window.removeEventListener('storage', handleTokenRotation);
+            socketRef.current?.disconnect();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const markAsRead = async (id: string) => {
         try {
-            await apiClient(`/notifications/${id}/read`, { method: 'PATCH' });
-            setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+            await apiClient(`/notifications/${id}/read`, {
+                method: 'PATCH',
+            });
+            setNotifications((prev) =>
+                prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+            );
         } catch (error) {
             console.error('Failed to mark as read:', error);
         }
@@ -72,17 +115,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const markAllAsRead = async () => {
         try {
-            await apiClient(`/notifications/read-all`, { method: 'PATCH' });
-            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+            await apiClient(`/notifications/read-all`, {
+                method: 'PATCH',
+            });
+            setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         } catch (error) {
             console.error('Failed to mark all as read:', error);
         }
     };
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const unreadCount = notifications.filter((n) => !n.isRead).length;
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, fetchNotifications }}>
+        <NotificationContext.Provider
+            value={{ notifications, unreadCount, markAsRead, markAllAsRead, fetchNotifications }}
+        >
             {children}
         </NotificationContext.Provider>
     );

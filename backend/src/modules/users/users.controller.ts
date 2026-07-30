@@ -65,6 +65,7 @@ import {
 import { ProfilePictureUploadResponseDto } from './dto/upload-profile-picture.dto';
 import { StorageService } from '../files/services/storage.service';
 import { maxFileSize, allowedImageMimeTypes } from 'src/common/constants';
+import { Public } from 'src/common/decorators/public.decorator';
 
 @ApiTags('Users')
 @Controller('users')
@@ -116,6 +117,7 @@ export class UsersController {
     return { message: 'Logged out successfully' };
   }
 
+  @Public()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
@@ -130,6 +132,7 @@ export class UsersController {
 
   // ==================== Email Verification Endpoints ====================
 
+  @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify email address' })
@@ -143,6 +146,7 @@ export class UsersController {
     return this.usersService.verifyEmail(verifyEmailDto);
   }
 
+  @Public()
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend email verification' })
@@ -157,6 +161,7 @@ export class UsersController {
 
   // ==================== Password Management Endpoints ====================
 
+  @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset' })
@@ -169,6 +174,7 @@ export class UsersController {
     return this.usersService.forgotPassword(forgotPasswordDto);
   }
 
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password with token' })
@@ -355,6 +361,44 @@ export class UsersController {
     return this.usersService.findOneByEmail(email);
   }
 
+  @Get('profile/stats')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ISSUER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get issuer profile statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'Issuer statistics',
+    type: IssuerProfileStatsDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Issuer/Admin only' })
+  async getIssuerStats(@CurrentUser('id') userId: string) {
+    return this.usersService.getIssuerStats(userId);
+  }
+
+  @Get('profile/activity')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ISSUER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get issuer activity log' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page', example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: 'Activity log',
+    type: IssuerActivityResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Issuer/Admin only' })
+  async getIssuerActivity(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getIssuerActivity(userId, page, limit);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -510,44 +554,6 @@ export class UsersController {
   }
 
   // ==================== Issuer Profile Management Endpoints ====================
-
-  @Get('profile/stats')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ISSUER, UserRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get issuer profile statistics' })
-  @ApiResponse({
-    status: 200,
-    description: 'Issuer statistics',
-    type: IssuerProfileStatsDto,
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Issuer/Admin only' })
-  async getIssuerStats(@CurrentUser('id') userId: string) {
-    return this.usersService.getIssuerStats(userId);
-  }
-
-  @Get('profile/activity')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ISSUER, UserRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get issuer activity log' })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page', example: 10 })
-  @ApiResponse({
-    status: 200,
-    description: 'Activity log',
-    type: IssuerActivityResponseDto,
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Issuer/Admin only' })
-  async getIssuerActivity(
-    @CurrentUser('id') userId: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-  ) {
-    return this.usersService.getIssuerActivity(userId, page, limit);
-  }
 
   @Put('profile/issuer')
   @UseGuards(JwtAuthGuard)
