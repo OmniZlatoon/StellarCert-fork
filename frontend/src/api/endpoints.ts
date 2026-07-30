@@ -3,6 +3,7 @@ import {
   AdminAnalytics,
   ApiError,
   AuthResponse,
+  AuditLogItem,
   Certificate,
   CertificateTemplate,
   CreateCertificateData,
@@ -93,7 +94,7 @@ interface RetryConfig {
   baseDelay: number;
   maxDelay: number;
   backoffFactor: number;
-  retryCondition?: (error: any) => boolean;
+  retryCondition?: (error: unknown) => boolean;
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -1376,13 +1377,17 @@ export const auditApi = {
         },
       ];
     }
-    const response = await apiClient<any[]>(`/audit/certificates/${certificateId}/history`);
+    const response = await apiClient<AuditLogItem[]>(`/audit/certificates/${certificateId}/history`);
     return response.map((log) => {
       let type: "issue" | "verify" | "revoke" = "issue";
       const actionLower = (log.action || "").toLowerCase();
       if (actionLower.includes("revoke")) {
         type = "revoke";
-      } else if (actionLower.includes("verify") || actionLower.includes("check")) {
+      } else if (
+        actionLower.includes("verify") ||
+        actionLower.includes("verified") ||
+        actionLower.includes("check")
+      ) {
         type = "verify";
       }
       return {
