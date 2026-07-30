@@ -273,9 +273,40 @@ CORS_ORIGIN=http://localhost:5173
 Frontend (.env):
 
 env
-VITE_API_URL=http://localhost:3000/api
+VITE_API_URL=http://localhost:3000/api/v1
 VITE_STELLAR_NETWORK=TESTNET
 VITE_HORIZON_URL=https://horizon-testnet.stellar.org
+📡 API Base URL & Versioning
+The backend applies a global `api` prefix and URI-based versioning with default version `1` (see `backend/src/main.ts`):
+
+```
+app.setGlobalPrefix('api');
+app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+```
+
+Every route is therefore served under `/api/v1/...`. A plain `/api/...` path returns **404** — this has caused issues in docker-compose and healthcheck configs in the past.
+
+Base URL (local dev):
+```
+http://localhost:3000/api/v1
+```
+
+Quick smoke-test (health check):
+```bash
+curl http://localhost:3000/api/v1/health
+```
+
+The Swagger UI (available at `http://localhost:3000/api/docs` in development) reflects the versioned paths — all routes shown there include the `/v1/` segment.
+
+**Important for configuration:** make sure environment variables that point at the API use the versioned base URL:
+```env
+# ✅ Correct
+VITE_API_URL=http://localhost:3000/api/v1
+
+# ❌ Wrong — returns 404
+VITE_API_URL=http://localhost:3000/api
+```
+
 📡 Stellar Integration
 Key Components
 Transaction Builder: Creates Stellar transactions for certificate operations
