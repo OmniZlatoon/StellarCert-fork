@@ -3,13 +3,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogIn, UserPlus, Shield, Eye, EyeOff } from "lucide-react";
 import { authApi } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { getSafeRedirectPath } from "../utils/redirect";
 
 type LoadingPhase = "idle" | "registering" | "logging-in";
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl") ?? "/";
+  const returnUrl = getSafeRedirectPath(searchParams.get("returnUrl"));
   const { login } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);

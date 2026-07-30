@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
 import { User } from '../api/types';
-import { tokenStorage } from '../api/tokens';
+import { tokenStorage, setTokenRefreshCallback } from '../api/tokens';
 
 // Helper function to check if JWT token is expired
 const isTokenExpired = (token: string): boolean => {
@@ -59,18 +59,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const currentToken = tokenStorage.getAccessToken();
 
       if (currentToken && isTokenExpired(currentToken)) {
-        // Token is expired, clear auth state
-      const accessToken = tokenStorage.getAccessToken();
-
-      if (accessToken && isTokenExpired(accessToken)) {
         console.warn('Access token expired, clearing authentication state');
         tokenStorage.clearTokens();
         setUserState(null);
         setAccessTokenState(null);
         localStorage.removeItem('user');
       } else if (!currentToken) {
-        // No token, clear user state
-      } else if (!accessToken) {
         setUserState(null);
         setAccessTokenState(null);
         localStorage.removeItem('user');
@@ -107,8 +101,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Drop the callback so a torn-down provider can't update stale state.
       setTokenRefreshCallback(() => {});
     };
-    const interval = setInterval(checkTokenExpiration, 5 * 60 * 1000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
