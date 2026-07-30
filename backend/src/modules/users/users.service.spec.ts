@@ -549,7 +549,7 @@ describe('UsersService', () => {
       mockUserRepository.findByEmail.mockResolvedValue(mockUser);
       mockUserRepository.update.mockResolvedValue(mockUser);
       (bcrypt.hash as jest.Mock).mockImplementationOnce(
-        async (value: string) => `hashed-${value}`,
+        (value: string) => Promise.resolve(`hashed-${value}`),
       );
 
       const result = await service.forgotPassword({ email: mockUser.email });
@@ -571,7 +571,7 @@ describe('UsersService', () => {
       expect(storedHash).not.toBe(plainToken);
       expect(bcrypt.hash).toHaveBeenCalledWith(plainToken, 12);
       (bcrypt.compare as jest.Mock).mockImplementationOnce(
-        async (value: string, hash: string) => hash === `hashed-${value}`,
+        (value: string, hash: string) => Promise.resolve(hash === `hashed-${value}`),
       );
       await expect(bcrypt.compare(plainToken, storedHash)).resolves.toBe(true);
       expect(emailQueueService.queuePasswordReset).toHaveBeenCalledWith(
@@ -596,7 +596,7 @@ describe('UsersService', () => {
       ]);
       mockUserRepository.update.mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockImplementation(
-        async (value: string, hash: string) => hash === `hashed-${value}`,
+        (value: string, hash: string) => Promise.resolve(hash === `hashed-${value}`),
       );
 
       const result = await service.resetPassword({
@@ -630,7 +630,7 @@ describe('UsersService', () => {
         userWithToken,
       ]);
       (bcrypt.compare as jest.Mock).mockImplementation(
-        async (value: string, hash: string) => hash === `hashed-${value}`,
+        (value: string, hash: string) => Promise.resolve(hash === `hashed-${value}`),
       );
 
       await expect(
@@ -657,7 +657,7 @@ describe('UsersService', () => {
         userWithExpiredToken,
       ]);
       (bcrypt.compare as jest.Mock).mockImplementation(
-        async (value: string, hash: string) => hash === `hashed-${value}`,
+        (value: string, hash: string) => Promise.resolve(hash === `hashed-${value}`),
       );
 
       await expect(
