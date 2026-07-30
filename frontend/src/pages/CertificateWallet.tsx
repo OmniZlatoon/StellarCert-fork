@@ -44,14 +44,18 @@ const CertificateWallet = () => {
     }
 
     const fetchCertificates = async () => {
+      setError(null);
       try {
         const data = await getUserCertificates(user.id);
         if (data) {
           setCertificates(data);
           setPage(1);
         }
-      } catch (error) {
-        console.error("Error fetching certificates:", error);
+      } catch (err) {
+        console.error("Error fetching certificates:", err);
+        setError(
+          "Failed to load your certificates. Please check your connection and try again.",
+        );
       } finally {
         setLoading(false);
       }
@@ -177,16 +181,6 @@ const CertificateWallet = () => {
       setActionLoadingId(null);
     }
   };
-
-  const handleClaim = async () => {
-  setError(null);
-
-  try {
-    await claimCertificate(id);
-  } catch {
-    setError('Unable to claim certificate');
-  }
-};
 
   // Helper function for PDF download with retry logic
   const handlePdfDownload = async (

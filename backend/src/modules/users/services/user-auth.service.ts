@@ -84,7 +84,7 @@ export class UserAuthService {
       emailVerificationToken,
       emailVerificationExpires,
       status: UserStatus.PENDING_VERIFICATION,
-      role: createUserDto.role || UserRole.USER,
+      role: UserRole.USER,
     });
 
     this.logger.log(`New user registered: ${user.email}`);
@@ -120,6 +120,11 @@ export class UserAuthService {
       throw new ForbiddenException(
         `Account is locked. Please try again in ${remainingTime} minutes`,
       );
+    }
+
+    // Check if account is suspended
+    if (user.status === UserStatus.SUSPENDED) {
+      throw new ForbiddenException('Account is suspended');
     }
 
     // Check if account is active
@@ -179,7 +184,7 @@ export class UserAuthService {
     let payload: { sub: string } | null = null;
     try {
       const decoded = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_SECRET'),
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
 
       if (!decoded || !decoded.sub || typeof decoded.sub !== 'string') {

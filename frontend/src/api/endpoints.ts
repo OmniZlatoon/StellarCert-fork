@@ -1,7 +1,9 @@
 import {
   ActivityItem,
+  AdminAnalytics,
   ApiError,
   AuthResponse,
+  AuditLogItem,
   Certificate,
   CertificateTemplate,
   CreateCertificateData,
@@ -29,7 +31,7 @@ import {
   ResetPasswordRequest,
   VerifyEmailRequest,
 } from "./types";
-import { tokenStorage } from "./tokens";
+import { tokenStorage, notifyTokenRefreshed } from "./tokens";
 
 interface AuditLogQueryParams {
   action?: string;
@@ -75,16 +77,11 @@ const handleError = (error: unknown, endpointName: string): never => {
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Refresh tokens using the stored refresh token
+ * Refresh tokens using the HttpOnly cookie sent automatically by the browser.
  */
 const refreshTokens = async (): Promise<AuthResponse> => {
-  const refreshToken = tokenStorage.getRefreshToken();
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
   return apiClient<AuthResponse>('/auth/refresh', {
     method: 'POST',
-    body: JSON.stringify({ refreshToken }),
     skipAuth: true,
   });
 };
@@ -97,7 +94,7 @@ interface RetryConfig {
   baseDelay: number;
   maxDelay: number;
   backoffFactor: number;
-  retryCondition?: (error: any) => boolean;
+  retryCondition?: (error: unknown) => boolean;
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -138,6 +135,7 @@ export async function apiClient<T>(
       const response = await fetch(url, {
         ...options,
         headers,
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -150,7 +148,9 @@ export async function apiClient<T>(
           try {
             const refreshResponse = await refreshTokens();
             tokenStorage.setAccessToken(refreshResponse.accessToken);
-            tokenStorage.setRefreshToken(refreshResponse.refreshToken);
+            // Forward the fresh user too so AuthContext updates both the user
+            // object and isAuthenticated, not just the stored token (#560).
+            notifyTokenRefreshed(refreshResponse.accessToken, refreshResponse.user);
             // Retry the original request with hasTriedRefresh = true
             return attemptRequest(attempt, true);
           } catch (refreshError) {
@@ -169,7 +169,12 @@ export async function apiClient<T>(
         return {} as T;
       }
 
-      return await response.json();
+      const json = await response.json();
+      // Unwrap the global ResponseInterceptor envelope { statusCode, message, data }
+      if (json && typeof json === 'object' && 'data' in json && 'statusCode' in json) {
+        return json.data as T;
+      }
+      return json as T;
     } catch (error) {
       // Don't retry if this is the last attempt or retry condition is not met
       if (attempt >= config.maxRetries || !config.retryCondition?.(error)) {
@@ -280,7 +285,7 @@ export const fetchUserByEmail = async (email: string): Promise<User | null> => {
   if (USE_DUMMY_DATA) {
     await simulateDelay();
     const user = dummyData.users.find((user) => user.email === email);
-    
+
     return user || null;
   }
 
@@ -403,7 +408,7 @@ export const verifyCertificate = async (
 
   try {
     return await apiClient<VerificationResult>(
-      `/certificates/${serialNumber}/verify`,
+      `/certificates/verify/${serialNumber}`,
     );
   } catch (error) {
     return handleError(error, "verifyCertificate");
@@ -436,9 +441,22 @@ export const createCertificate = async (
   }
 
   try {
+    const payload = {
+      issuerId: data.issuerId,
+      recipientId: data.recipientId || undefined,
+      recipientEmail: data.recipientEmail,
+      recipientName: data.recipientName,
+      title: data.title,
+      description: data.description || undefined,
+      courseName: data.courseName || undefined,
+      issuerName: data.issuerName || undefined,
+      expiresAt: data.expiryDate || undefined,
+      templateId: data.templateId || undefined,
+      metadata: data.metadata || undefined,
+    };
     return await apiClient<Certificate>("/certificates", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
   } catch (error) {
     return handleError(error, "createCertificate");
@@ -523,7 +541,11 @@ export const getUserCertificates = async (
   }
 
   try {
-    return await apiClient<Certificate[]>(`/certificates/user/${userId}`);
+    const result = await apiClient<Certificate[] | { certificates: Certificate[]; total: number } | PaginatedResponse<Certificate>>(`/certificates/user/${userId}`);
+    if (Array.isArray(result)) return result;
+    if ('data' in result) return (result as PaginatedResponse<Certificate>).data;
+    if ('certificates' in result) return (result as { certificates: Certificate[] }).certificates;
+    return [];
   } catch (error) {
     return handleError(error, "getUserCertificates");
   }
@@ -775,7 +797,7 @@ export const certificateApi = {
     }
 
     return apiClient<Certificate>(`/certificates/${certificateId}/freeze`, {
-      method: "POST",
+      method: "PATCH",
       body: JSON.stringify({ reason, durationDays }),
     });
   },
@@ -795,11 +817,11 @@ export const certificateApi = {
     }
 
     return apiClient<Certificate>(`/certificates/${certificateId}/unfreeze`, {
-      method: "POST",
+      method: "PATCH",
     });
   },
   getQR: getCertificateQR,
-  
+
   // Certificate Transfer API (#286)
   transfer: {
     initiate: async (data: InitiateTransferDto): Promise<CertificateTransfer> => {
@@ -841,7 +863,6 @@ export const loginApi = async (
         refreshToken: "dummy-refresh-token",
       };
       tokenStorage.setAccessToken(response.accessToken);
-      // Note: refreshToken is handled server-side via httpOnly cookies
       return response;
     }
     throw new Error("Invalid credentials");
@@ -850,10 +871,10 @@ export const loginApi = async (
   try {
     const response = await apiClient<AuthResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({ email: credentials.email, password: credentials.password }),
+      skipAuth: true,
     });
     tokenStorage.setAccessToken(response.accessToken);
-    // Note: refreshToken is handled server-side via httpOnly cookies
     return response;
   } catch (error) {
     return handleError(error, "loginApi");
@@ -867,7 +888,10 @@ export const registerApi = async (
     await simulateDelay();
     const newUser: User = {
       id: `user-${Date.now()}`,
-      ...data,
+      email: data.email,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: UserRole.USER,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -878,17 +902,25 @@ export const registerApi = async (
       refreshToken: "dummy-refresh-token",
     };
     tokenStorage.setAccessToken(response.accessToken);
-    // Note: refreshToken is handled server-side via httpOnly cookies
     return response;
   }
 
   try {
     const response = await apiClient<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName,
+      }),
+      skipAuth: true,
     });
-    tokenStorage.setAccessToken(response.accessToken);
-    // Note: refreshToken is handled server-side via httpOnly cookies
+    // Registration requires email verification before login is allowed.
+    // Store access token so the UI can show the "check your email" state.
+    if (response.accessToken) {
+      tokenStorage.setAccessToken(response.accessToken);
+    }
     return response;
   } catch (error) {
     return handleError(error, "registerApi");
@@ -899,20 +931,19 @@ export const authApi = {
   login: loginApi,
   register: registerApi,
   refresh: async (): Promise<AuthResponse> => {
-    const refreshToken = tokenStorage.getRefreshToken();
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
     return apiClient<AuthResponse>('/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken }),
       skipAuth: true,
     });
   },
   logout: async (): Promise<void> => {
     try {
       if (!USE_DUMMY_DATA) {
-        await apiClient("/auth/logout", { method: "POST" });
+        const accessToken = tokenStorage.getAccessToken();
+        await apiClient("/auth/logout", {
+          method: "POST",
+          body: JSON.stringify({ accessToken: accessToken ?? '' }),
+        });
       }
     } finally {
       tokenStorage.clearTokens();
@@ -936,6 +967,14 @@ export const authApi = {
     return apiClient("/users/verify-email", {
       method: "POST",
       body: JSON.stringify(data),
+      skipAuth: true,
+    });
+  },
+  resendVerification: async (email: string): Promise<{ message: string }> => {
+    return apiClient("/users/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
     });
   },
 };
@@ -1281,7 +1320,18 @@ export const dashboardApi = {
         ],
       };
     }
-    return apiClient<DashboardStats>("/admin/analytics/dashboard");
+    const data = await apiClient<AdminAnalytics>("/admin/analytics");
+    return {
+      totalCertificates: data.certificatesByStatus.total,
+      activeCertificates: data.certificatesByStatus.active,
+      revokedCertificates: data.certificatesByStatus.revoked,
+      expiredCertificates: data.certificatesByStatus.expired,
+      totalVerifications: data.verificationTrends.total,
+      verifications24h: data.verificationTrends.last24Hours,
+      totalUsers: data.usersByRole.total,
+      issuanceTrend: data.certificateIssuanceTrend,
+      recentActivity: [],
+    };
   },
 
   getRecentActivity: async (limit = 10): Promise<ActivityItem[]> => {
@@ -1327,13 +1377,17 @@ export const auditApi = {
         },
       ];
     }
-    const response = await apiClient<any[]>(`/audit/certificates/${certificateId}/history`);
+    const response = await apiClient<AuditLogItem[]>(`/audit/certificates/${certificateId}/history`);
     return response.map((log) => {
       let type: "issue" | "verify" | "revoke" = "issue";
       const actionLower = (log.action || "").toLowerCase();
       if (actionLower.includes("revoke")) {
         type = "revoke";
-      } else if (actionLower.includes("verify") || actionLower.includes("check")) {
+      } else if (
+        actionLower.includes("verify") ||
+        actionLower.includes("verified") ||
+        actionLower.includes("check")
+      ) {
         type = "verify";
       }
       return {

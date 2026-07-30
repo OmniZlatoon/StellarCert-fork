@@ -19,14 +19,16 @@ describe('AuditContextMiddleware', () => {
   });
 
   afterEach(() => {
-    requestContextService.clearContext();
+    if (requestContextService && typeof requestContextService.clearContext === 'function') {
+      requestContextService.clearContext();
+    }
   });
 
   describe('use', () => {
     let mockRequest: Partial<Request>;
     let mockResponse: Partial<Response>;
     let mockNext: NextFunction;
-    let listeners: { [key: string]: Array<(...args: any[]) => void> }; // More specific type
+    let listeners: { [key: string]: Array<(...args: any[]) => void> };
 
     beforeEach(() => {
       listeners = {};
@@ -46,7 +48,6 @@ describe('AuditContextMiddleware', () => {
       mockResponse = {
         setHeader: jest.fn(),
         on: jest.fn((event: string, callback: (...args: any[]) => void) => {
-          // Specific callback type
           if (!listeners[event]) {
             listeners[event] = [];
           }
@@ -108,7 +109,7 @@ describe('AuditContextMiddleware', () => {
       expect(correlationIdCall).toBeDefined();
       expect(correlationIdCall[1]).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-      ); // UUID format
+      );
     });
 
     it('should extract client ip from x-forwarded-for header', () => {
@@ -207,7 +208,6 @@ describe('AuditContextMiddleware', () => {
 
       expect(requestContextService.getContext(contextId)).toBeDefined();
 
-      // Trigger finish event
       if (listeners['finish']) {
         listeners['finish'].forEach((cb) => cb());
       }

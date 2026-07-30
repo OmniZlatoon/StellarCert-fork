@@ -3,6 +3,7 @@ import {
   ConflictException,
   Logger,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -22,6 +23,7 @@ import { WebhooksService } from '../webhooks/webhooks.service';
 import { WebhookEvent } from '../webhooks/entities/webhook-subscription.entity';
 import { MetadataSchemaService } from '../metadata-schema/services/metadata-schema.service';
 import { UserRole } from '../users/entities/user.entity';
+import { SorobanService } from '../stellar/services/soroban.service';
 
 @Injectable()
 export class CertificateService {
@@ -39,6 +41,7 @@ export class CertificateService {
     private readonly webhooksService: WebhooksService,
     private readonly metadataSchemaService: MetadataSchemaService,
     private readonly dataSource: DataSource,
+    private readonly sorobanService: SorobanService,
   ) {}
 
   async create(
@@ -111,6 +114,7 @@ export class CertificateService {
       const certificate = queryRunner.manager.create(Certificate, {
         ...dto,
         recipientId,
+        certificateId: this.generateCertificateId(),
         expiresAt:
           dto.expiresAt || this.calculateDefaultExpiry(),
         verificationCode:
@@ -118,6 +122,10 @@ export class CertificateService {
           this.generateVerificationCode(),
         isDuplicate: false,
       });
+      // TypeORM quirk: dual @Column()/@ManyToOne() on same column name — set issuerId directly
+      if (dto.issuerId) {
+        (certificate as any).issuerId = dto.issuerId;
+      }
 
       const savedCertificate = await queryRunner.manager.save(certificate);
 
@@ -134,6 +142,73 @@ export class CertificateService {
       this.logger.log(
         `Certificate created: ${savedCertificate.id} for ${dto.recipientEmail}`,
       );
+
+      // ── Issue on-chain ────────────────────────────────────────────────────
+      // Attempt to record the certificate on the Soroban contract.  The DB
+      // record is committed first so it is never lost on a transient RPC
+      // error.  If Soroban is not configured (e.g. in test/dev environments)
+      // the call is skipped and a warning is logged.  If the on-chain call
+      // fails we surface the error to the caller so they are aware the DB and
+      // the chain are out of sync — callers can retry via the dedicated
+      // stellar endpoint.
+      if (this.sorobanService.isConfigured()) {
+        try {
+          const metadataUri = savedCertificate.verificationCode ?? savedCertificate.id;
+          const issuerAddress = savedCertificate.issuerStellarAddress ?? '';
+          const ownerAddress = savedCertificate.recipientStellarAddress ?? '';
+
+          if (!issuerAddress || !ownerAddress) {
+            this.logger.warn(
+              `Certificate ${savedCertificate.id}: missing Stellar addresses — skipping on-chain issuance`,
+            );
+          } else {
+            const expiresAtUnix = savedCertificate.expiresAt
+              ? Math.floor(savedCertificate.expiresAt.getTime() / 1000)
+              : undefined;
+
+            const txHash = await this.sorobanService.issueCertificate(
+              savedCertificate.id,
+              issuerAddress,
+              ownerAddress,
+              metadataUri,
+              expiresAtUnix,
+            );
+
+            if (!txHash) {
+              throw new InternalServerErrorException(
+                `On-chain issuance failed for certificate ${savedCertificate.id}`,
+              );
+            }
+
+            // Persist the Stellar transaction hash so callers can verify on-chain
+            await this.certificateRepository.update(savedCertificate.id, {
+              stellarTransactionHash: typeof txHash === 'string' ? txHash : undefined,
+            });
+
+            if (typeof txHash === 'string') {
+              savedCertificate.stellarTransactionHash = txHash;
+            }
+
+            this.logger.log(
+              `Certificate ${savedCertificate.id} issued on-chain`,
+            );
+          }
+        } catch (blockchainError: any) {
+          // Log the failure but do NOT silently swallow it — the certificate
+          // exists in the DB without a corresponding on-chain record, which is
+          // the bug described in issue #523.  Re-throw so the caller knows.
+          this.logger.error(
+            `On-chain issuance failed for certificate ${savedCertificate.id}: ${blockchainError.message}`,
+            blockchainError.stack,
+          );
+          throw blockchainError;
+        }
+      } else {
+        this.logger.warn(
+          'SorobanService is not configured — certificate saved to DB only (no on-chain record)',
+        );
+      }
+      // ── End on-chain issuance ─────────────────────────────────────────────
 
       // Trigger webhook event (outside transaction)
       await this.webhooksService.triggerEvent(
@@ -298,7 +373,11 @@ export class CertificateService {
     return savedCertificate;
   }
 
-  async freeze(id: string, reason?: string): Promise<Certificate> {
+  async freeze(
+    id: string,
+    reason?: string,
+    durationDays?: number,
+  ): Promise<Certificate> {
     const certificate = await this.findOne(id);
 
     if (certificate.status !== CertificateStatus.ACTIVE) {
@@ -307,14 +386,23 @@ export class CertificateService {
       );
     }
 
+    const frozenAt = new Date();
+    const normalizedDurationDays =
+      typeof durationDays === 'number' && Number.isFinite(durationDays)
+        ? Math.max(1, Math.trunc(durationDays))
+        : undefined;
+    const unfreezeAt = normalizedDurationDays
+      ? new Date(frozenAt.getTime() + normalizedDurationDays * 24 * 60 * 60 * 1000)
+      : undefined;
+
     certificate.status = CertificateStatus.FROZEN;
-    if (reason) {
-      certificate.metadata = {
-        ...certificate.metadata,
-        freezeReason: reason,
-        frozenAt: new Date(),
-      };
-    }
+    certificate.metadata = {
+      ...certificate.metadata,
+      ...(reason ? { freezeReason: reason } : {}),
+      frozenAt,
+      ...(normalizedDurationDays ? { freezeDurationDays: normalizedDurationDays } : {}),
+      ...(unfreezeAt ? { unfreezeAt } : {}),
+    };
 
     const savedCertificate = await this.certificateRepository.save(certificate);
 
@@ -325,8 +413,10 @@ export class CertificateService {
       {
         id: savedCertificate.id,
         status: savedCertificate.status,
-        freezeReason: reason,
-        frozenAt: new Date(),
+        ...(reason ? { freezeReason: reason } : {}),
+        frozenAt,
+        ...(normalizedDurationDays ? { freezeDurationDays: normalizedDurationDays } : {}),
+        ...(unfreezeAt ? { unfreezeAt } : {}),
       },
     );
 
@@ -540,7 +630,7 @@ export class CertificateService {
       cert.recipientEmail,
       cert.title,
       cert.courseName,
-      cert.issuer?.name || 'Unknown',
+      cert.issuerName ?? (cert.issuer ? (`${cert.issuer.firstName ?? ''} ${cert.issuer.lastName ?? ''}`.trim() || 'Unknown') : 'Unknown'),
       cert.issuedAt.toISOString().split('T')[0],
       cert.status,
       cert.expiresAt ? cert.expiresAt.toISOString().split('T')[0] : '',
@@ -639,10 +729,9 @@ export class CertificateService {
     hash: string,
     ipAddress: string,
     userAgent: string,
-  ): Promise<any> {
-    // Placeholder for Stellar verification
+  ): Promise<Certificate> {
     const certificate = await this.certificateRepository.findOne({
-      where: { stellarTxHash: hash } as any,
+      where: { stellarTransactionHash: hash },
     });
     if (!certificate) {
       throw new NotFoundException('Certificate not found for this Stellar transaction');
@@ -680,8 +769,10 @@ export class CertificateService {
   async getStellarTransactionData(id: string): Promise<any> {
     const certificate = await this.findOne(id);
     return {
-      stellarTxHash: (certificate as any).stellarTxHash,
-      stellarNetwork: (certificate as any).stellarNetwork,
+      stellarTransactionHash: certificate.stellarTransactionHash,
+      stellarTransactionId: certificate.stellarTransactionId,
+      stellarMemo: certificate.stellarMemo,
+      stellarSequenceNumber: certificate.stellarSequenceNumber,
       issuedAt: certificate.issuedAt,
     };
   }
@@ -707,8 +798,10 @@ export class CertificateService {
     ipAddress: string,
     userAgent: string,
   ): Promise<Certificate> {
+    // Override issuerId with the authenticated user's ID (users table)
+    const dtoWithUserId = { ...dto, issuerId: userId } as CreateCertificateDto;
     return this.create(
-      dto as CreateCertificateDto,
+      dtoWithUserId,
       (dto as any).duplicateConfig,
       (dto as any).overrideReason,
       ipAddress,
@@ -749,5 +842,15 @@ export class CertificateService {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
+  }
+
+  private generateCertificateId(): string {
+    const year = new Date().getFullYear();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let suffix = '';
+    for (let i = 0; i < 8; i++) {
+      suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `CERT-${year}-${suffix}`;
   }
 }
