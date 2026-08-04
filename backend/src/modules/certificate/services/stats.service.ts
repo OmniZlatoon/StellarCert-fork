@@ -137,7 +137,7 @@ export class CertificateStatsService {
       .groupBy('cert.issuerId')
       .addGroupBy('issuer.firstName')
       .addGroupBy('issuer.lastName')
-      .orderBy('certificateCount', 'DESC')
+      .orderBy('"certificateCount"', 'DESC')
       .limit(limit)
       .getRawMany();
 
