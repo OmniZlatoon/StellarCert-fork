@@ -13,3 +13,12 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - run: npm ci 2>/dev/null || npm install
       - run: npm test 2>/dev/null || echo "Tests completed"
+      - name: Generate OpenAPI
+        run: |
+          cd backend
+          npm run generate-openapi
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: backend/openapi.json
