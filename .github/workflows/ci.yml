@@ -11,5 +11,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: npm ci 2>/dev/null || npm install
-      - run: npm test 2>/dev/null || echo "Tests completed"
+      - run: npm ci
+      - run: npm test
