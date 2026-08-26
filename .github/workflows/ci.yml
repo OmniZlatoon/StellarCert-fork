@@ -13,3 +13,33 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - run: npm ci 2>/dev/null || npm install
       - run: npm test 2>/dev/null || echo "Tests completed"
+
+  frontend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Install all workspace dependencies from the root lockfile.
+      # frontend/package-lock.json does not exist; the lockfile lives at
+      # the repo root because this is an npm workspaces project.
+      - name: Install dependencies (root lockfile)
+        run: npm ci
+
+      - name: Lint (frontend workspace)
+        run: npm run --workspace frontend lint
+
+      - name: Type-check (frontend workspace)
+        run: npm run --workspace frontend typecheck
+
+      - name: Build (frontend workspace)
+        run: npm run --workspace frontend build
+
+      - name: Test (frontend workspace)
+        run: npm run --workspace frontend test
