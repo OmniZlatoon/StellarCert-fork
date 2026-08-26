@@ -4,6 +4,7 @@ import { AuditCleanupJob } from './audit-cleanup.job';
 import { AuditService } from '../services';
 import { AuditAction, AuditResourceType } from '../constants';
 import { DistributedLockService } from '../../../common/services/distributed-lock.service';
+import { LoggingService } from '../../../common/logging/logging.service';
 
 describe('AuditCleanupJob', () => {
   let job: AuditCleanupJob;
@@ -37,6 +38,14 @@ describe('AuditCleanupJob', () => {
           useValue: {
             acquire: jest.fn().mockResolvedValue('lock-token'),
             release: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: LoggingService,
+          useValue: {
+            log: jest.fn(),
+            error: jest.fn(),
+            warn: jest.fn(),
           },
         },
       ],
