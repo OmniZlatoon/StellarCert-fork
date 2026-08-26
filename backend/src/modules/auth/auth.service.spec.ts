@@ -4,6 +4,8 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { JwtManagementService } from './services/jwt.service';
+import { TwoFactorService } from './services/two-factor.service';
+import { UserRepository } from '../users/repositories/user.repository';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
@@ -80,6 +82,19 @@ describe('AuthService - Registration', () => {
           provide: JwtManagementService,
           useValue: mockJwtManagementService,
         },
+        {
+          provide: TwoFactorService,
+          useValue: {
+            validateLogin: jest.fn(),
+          },
+        },
+        {
+          provide: UserRepository,
+          useValue: {
+            findByEmailWithPassword: jest.fn(),
+            update: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -99,11 +114,14 @@ describe('AuthService - Registration', () => {
         accessToken: 'mock-access-token',
         refreshToken: 'mock-refresh-token',
         expiresIn: 3600,
+        requiresEmailVerification: true,
         user: {
           id: 'user-123',
           email: 'test@example.com',
           firstName: 'John',
           lastName: 'Doe',
+          role: 'USER',
+          isEmailVerified: false,
         },
       });
     });
@@ -147,20 +165,21 @@ describe('AuthService - Registration', () => {
         accessToken: 'access-token-456',
         refreshToken: 'refresh-token-456',
         expiresIn: 7200,
+        requiresEmailVerification: false,
         user: {
           id: 'user-456',
           email: 'jane@example.com',
           firstName: 'Jane',
           lastName: 'Smith',
+          role: 'USER',
+          isEmailVerified: true,
         },
       });
 
-      // Ensure no extra fields are included in the user object
+      // Ensure no unintended fields are included in the user object
       expect(result.user).not.toHaveProperty('username');
       expect(result.user).not.toHaveProperty('profilePicture');
-      expect(result.user).not.toHaveProperty('role');
       expect(result.user).not.toHaveProperty('stellarPublicKey');
-      expect(result.user).not.toHaveProperty('isEmailVerified');
       expect(result.user).not.toHaveProperty('createdAt');
     });
 
