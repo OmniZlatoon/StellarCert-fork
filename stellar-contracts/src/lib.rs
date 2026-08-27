@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, String, Val, Vec,
+    contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 mod types;
@@ -675,7 +675,7 @@ cert.owner = new_owner;
 
         // Emit a completion event for off-chain systems
         env.events().publish(
-            (symbol_short!("transfer_done"), transfer_id.clone()),
+            (Symbol::new(&env, "transfer_done"), transfer_id.clone()),
             TransferCompletedEvent {
                 transfer_id,
                 certificate_id: cert.id,
@@ -876,7 +876,6 @@ cert.owner = new_owner;
         Self::set_persistent(&env, &DataKey::MultisigConfig(issuer), &config);
     }
 
-    issuer.require_auth();
     pub fn propose_certificate(
         env: Env,
         request_id: String,
@@ -885,6 +884,7 @@ cert.owner = new_owner;
         metadata: String,
         expiration_days: u32,
     ) -> PendingRequest {
+        issuer.require_auth();
         let config: MultisigConfig = env
             .storage()
             .persistent()
@@ -1455,16 +1455,3 @@ cert.owner = new_owner;
         }
     }
 }
-
-
-@@ -1,4 +1,4 @@
--use soroban_sdk::{symbol_short, Address, Env, String};
-+use soroban_sdk::{symbol_short, Address, Env, String, Symbol};
-
- // ...
-
- // Emit a completion event for off-chain systems
- env.events().publish(
--    (symbol_short!("transfer_done"), transfer_id.clone()),
-+    (Symbol::new(&env, "transfer_done"), transfer_id.clone()),
- );

@@ -104,7 +104,8 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   backoffFactor: 2,
   retryCondition: (error) => {
     // Retry on network errors and 5xx server errors
-    return !error.statusCode || (error.statusCode >= 500 && error.statusCode < 600);
+    const status = (error as { statusCode?: number } | undefined)?.statusCode;
+    return !status || (status >= 500 && status < 600);
   }
 };
 
@@ -1392,7 +1393,7 @@ export const auditApi = {
       }
       return {
         type,
-        date: new Date(Number(log.timestamp) || log.createdAt).toISOString(),
+        date: new Date(Number(log.timestamp) || log.createdAt || Date.now()).toISOString(),
         description: log.description || log.errorMessage || `${String(log.action).replace(/_/g, " ")} by ${log.userEmail || "unknown"}`,
       };
     });

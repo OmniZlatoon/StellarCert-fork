@@ -19,7 +19,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   clearAuth: () => void;
-  login: (accessToken: string, refreshToken: string, user: User) => void;
+  login: (accessToken: string, user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -131,14 +131,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('user');
   };
 
-  const login = (accessToken: string, refreshToken: string, nextUser: User) => {
+  const login = (accessToken: string, nextUser: User) => {
     if (isTokenExpired(accessToken)) {
       console.error('Attempted to login with expired token');
       return;
     }
 
+    // The refresh token is managed server-side via an HttpOnly cookie, so only
+    // the access token is persisted client-side here.
     tokenStorage.setAccessToken(accessToken);
-    tokenStorage.setRefreshToken(refreshToken);
+    setAccessTokenState(accessToken);
     setUserState(nextUser);
   };
 
