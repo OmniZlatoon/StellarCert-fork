@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
 import { TerminusModule } from '@nestjs/terminus';
 import { HealthController } from './health.controller';
 import { MetricsController } from './metrics.controller';
@@ -13,7 +14,14 @@ import { StellarService } from '../../common/services/stellar.service';
 import { IpRateLimitGuard } from '../../common/guards/ip-rate-limit.guard';
 
 @Module({
-  imports: [TerminusModule, CommonModule, ConfigModule],
+  imports: [
+    TerminusModule,
+    CommonModule,
+    ConfigModule,
+    // RedisHealthIndicator injects @InjectQueue('stellar-email-queue'); register
+    // the queue here so its provider (BullQueue_stellar-email-queue) resolves.
+    BullModule.registerQueue({ name: 'stellar-email-queue' }),
+  ],
   controllers: [HealthController, MetricsController, RateLimitController],
   providers: [
     DatabaseHealthIndicator,

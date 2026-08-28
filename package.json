@@ -29,8 +29,9 @@
     "lint:backend": "cd backend && npm run lint",
     "lint:frontend": "cd frontend && npm run lint",
     "lint:contracts": "cd stellar-contracts && cargo clippy",
-    "typecheck": "npm run typecheck:backend",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
     "typecheck:backend": "cd backend && npm run typecheck",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "ci:check": "npm run lint && npm run typecheck && npm run test",
     "ci:build": "npm run build && npm run build:contracts",
@@ -38,14 +39,14 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "prettier": "^3.0.0"
+    "prettier": "^3.9.6"
   },
   "dependencies": {
-    "@nestjs/bull": "^11.0.4",
-    "@nestjs/platform-express": "^11.1.12",
+    "@nestjs/bull": "^11.0.5",
+    "@nestjs/platform-express": "^11.2.1",
     "bull": "^4.16.5",
     "handlebars": "^4.7.9",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.0.5",
     "puppeteer": "^24.42.0"
   }
 }

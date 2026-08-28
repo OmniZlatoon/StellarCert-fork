@@ -3,12 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { AuditCleanupJob } from './audit-cleanup.job';
 import { AuditService } from '../services';
 import { AuditAction, AuditResourceType } from '../constants';
+import { DistributedLockService } from '../../../common/services/distributed-lock.service';
 import { LoggingService } from '../../../common/logging/logging.service';
 
 describe('AuditCleanupJob', () => {
   let job: AuditCleanupJob;
   let auditService: AuditService;
   let configService: ConfigService;
+  let distributedLock: DistributedLockService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -32,6 +34,13 @@ describe('AuditCleanupJob', () => {
           },
         },
         {
+          provide: DistributedLockService,
+          useValue: {
+            acquire: jest.fn().mockResolvedValue('lock-token'),
+            release: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
           provide: LoggingService,
           useValue: {
             log: jest.fn(),
@@ -45,6 +54,7 @@ describe('AuditCleanupJob', () => {
     job = module.get<AuditCleanupJob>(AuditCleanupJob);
     auditService = module.get<AuditService>(AuditService);
     configService = module.get<ConfigService>(ConfigService);
+    distributedLock = module.get<DistributedLockService>(DistributedLockService);
   });
 
   describe('handleCron', () => {
@@ -54,6 +64,16 @@ describe('AuditCleanupJob', () => {
       expect(configService.get).toHaveBeenCalledWith('AUDIT_RETENTION_DAYS');
       expect(configService.get).toHaveBeenCalledWith('audit.retentionDays');
       expect(auditService.cleanupOldLogs).toHaveBeenCalledWith(90);
+    });
+
+    it('should skip cleanup when another instance owns the lock', async () => {
+      jest.spyOn(distributedLock, 'acquire').mockResolvedValue(null);
+
+      await job.handleCron();
+
+      expect(auditService.cleanupOldLogs).not.toHaveBeenCalled();
+      expect(auditService.log).not.toHaveBeenCalled();
+      expect(distributedLock.release).not.toHaveBeenCalled();
     });
 
     it('should log cleanup start event', async () => {

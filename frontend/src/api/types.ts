@@ -247,6 +247,9 @@ export interface AuditLogItem {
   userAgent?: string;
   metadata?: Record<string, unknown>;
   timestamp: string;
+  createdAt?: string;
+  errorMessage?: string;
+  userEmail?: string;
 }
 
 export interface AuditLogSearchResponse {

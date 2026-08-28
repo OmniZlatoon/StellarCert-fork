@@ -104,7 +104,8 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   backoffFactor: 2,
   retryCondition: (error) => {
     // Retry on network errors and 5xx server errors
-    return !error.statusCode || (error.statusCode >= 500 && error.statusCode < 600);
+    const status = (error as { statusCode?: number } | undefined)?.statusCode;
+    return !status || (status >= 500 && status < 600);
   }
 };
 
@@ -148,6 +149,7 @@ export async function apiClient<T>(
           try {
             const refreshResponse = await refreshTokens();
             tokenStorage.setAccessToken(refreshResponse.accessToken);
+            headers.set("Authorization", `Bearer ${refreshResponse.accessToken}`);
             // Forward the fresh user too so AuthContext updates both the user
             // object and isAuthenticated, not just the stored token (#560).
             notifyTokenRefreshed(refreshResponse.accessToken, refreshResponse.user);
@@ -408,7 +410,7 @@ export const verifyCertificate = async (
 
   try {
     return await apiClient<VerificationResult>(
-      `/certificates/verify/${serialNumber}`,
+      `/certificates/verify/${encodeURIComponent(serialNumber)}`,
     );
   } catch (error) {
     return handleError(error, "verifyCertificate");
@@ -1392,7 +1394,7 @@ export const auditApi = {
       }
       return {
         type,
-        date: new Date(Number(log.timestamp) || log.createdAt).toISOString(),
+        date: new Date(Number(log.timestamp) || log.createdAt || Date.now()).toISOString(),
         description: log.description || log.errorMessage || `${String(log.action).replace(/_/g, " ")} by ${log.userEmail || "unknown"}`,
       };
     });

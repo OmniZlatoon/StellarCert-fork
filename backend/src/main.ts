@@ -9,7 +9,6 @@ import { MonitoringInterceptor } from './common/monitoring/monitoring.intercepto
 import { MetricsService } from './common/monitoring/metrics.service';
 import { SecurityHeadersInterceptor } from './modules/security/interceptor';
 import { VersioningType } from '@nestjs/common';
-import { RequestValidationPipe } from './modules/security/pipes/request-validation.pipe';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 
@@ -71,7 +70,6 @@ async function bootstrap() {
   });
 
   // Use global pipes and filters
-  app.useGlobalPipes(new RequestValidationPipe());
   app.useGlobalFilters(
     new GlobalExceptionFilter(app.get(ConfigService), sentryService, loggingService),
   );
