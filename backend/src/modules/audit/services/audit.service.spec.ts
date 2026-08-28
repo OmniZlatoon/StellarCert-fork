@@ -5,6 +5,7 @@ import { AuditService } from './audit.service';
 import { RequestContextService } from './request-context.service';
 import { AuditLog } from '../entities';
 import { AuditAction, AuditResourceType } from '../constants';
+import { LoggingService } from '../../../common/logging/logging.service';
 
 describe('AuditService', () => {
   let service: AuditService;
@@ -37,6 +38,10 @@ describe('AuditService', () => {
       providers: [
         AuditService,
         RequestContextService,
+        {
+          provide: LoggingService,
+          useValue: { error: jest.fn(), warn: jest.fn(), log: jest.fn() },
+        },
         {
           provide: getRepositoryToken(AuditLog),
           useValue: {
@@ -326,6 +331,20 @@ describe('AuditService', () => {
 
       expect(result).toContain('ID,Action,Resource Type');
       expect(result.split('\n').length).toBeGreaterThan(5000);
+    });
+
+    it('fetches exports in pages rather than applying the interactive 500-row cap', async () => {
+      const firstPage = Array(500).fill(null).map((_, i) => ({ ...mockAuditLog, id: `page-1-${i}` }));
+      const secondPage = Array(2).fill(null).map((_, i) => ({ ...mockAuditLog, id: `page-2-${i}` }));
+      const search = jest.spyOn(service, 'search')
+        .mockResolvedValueOnce({ data: firstPage, total: 502 })
+        .mockResolvedValueOnce({ data: secondPage, total: 502 });
+
+      const result = await service.exportToCsv({ action: AuditAction.USER_LOGIN });
+
+      expect(search).toHaveBeenNthCalledWith(1, { action: AuditAction.USER_LOGIN, skip: 0, take: 500 });
+      expect(search).toHaveBeenNthCalledWith(2, { action: AuditAction.USER_LOGIN, skip: 500, take: 500 });
+      expect(result).toContain('page-2-1');
     });
   });
 });

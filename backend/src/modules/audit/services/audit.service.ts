@@ -345,7 +345,19 @@ export class AuditService {
   }
 
   async exportToCsv(searchDto: AuditSearchDto): Promise<string> {
-    const { data } = await this.search({ ...searchDto, skip: 0, take: 50000 });
+    // `search` intentionally caps interactive requests at 500 rows. Export is
+    // allowed to retrieve the complete filtered result, but does so in bounded
+    // pages so it cannot silently truncate or create an unbounded query.
+    const data: AuditLog[] = [];
+    let skip = 0;
+    let total = 0;
+    do {
+      const page = await this.search({ ...searchDto, skip, take: 500 });
+      data.push(...page.data);
+      total = page.total;
+      skip += page.data.length;
+      if (page.data.length === 0) break;
+    } while (skip < total);
 
     if (data.length === 0) {
       return 'No audit logs found';
