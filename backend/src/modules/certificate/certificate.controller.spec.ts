@@ -1,16 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { CertificateController } from './certificate.controller';
 import { CertificateService } from './certificate.service';
 import { CertificateStatsService } from './services/stats.service';
+import { CertificatePdfService } from './services/pdf.service';
+import { CertificateMapper } from './mappers/certificate.mapper';
 
 describe('CertificateController', () => {
   let controller: CertificateController;
   const certificateService = {
     getCertificateQrCode: jest.fn(),
     verifyCertificate: jest.fn(),
+    verifyByCode: jest.fn(),
   };
   const statsService = {
     getPublicSummary: jest.fn(),
+  };
+  const certificateMapper = {
+    toResponse: jest.fn(),
+    toVerificationResult: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -24,6 +34,33 @@ describe('CertificateController', () => {
         {
           provide: CertificateStatsService,
           useValue: statsService,
+        },
+        {
+          provide: CertificatePdfService,
+          useValue: {
+            generate: jest.fn(),
+          },
+        },
+        {
+          provide: CertificateMapper,
+          useValue: certificateMapper,
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            sign: jest.fn(),
+            verify: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn(),
+          },
+        },
+        {
+          provide: Reflector,
+          useValue: new Reflector(),
         },
       ],
     }).compile();
@@ -79,9 +116,18 @@ describe('CertificateController', () => {
       verificationCode: mockCertificate.verificationCode,
     };
 
-    certificateService.verifyCertificate.mockResolvedValue(mockCertificate);
+    certificateService.verifyByCode.mockResolvedValue(mockCertificate);
+    certificateMapper.toVerificationResult.mockReturnValue(expectedResponse);
 
-    await expect((controller as any).verifyCertificate('AB12CD34')).resolves.toEqual(expectedResponse);
-    expect(certificateService.verifyCertificate).toHaveBeenCalledWith('AB12CD34');
+    const req = { ip: '127.0.0.1', headers: {} };
+    await expect(
+      (controller as any).verifyByCode('AB12CD34', req, 'public'),
+    ).resolves.toEqual(expectedResponse);
+    expect(certificateService.verifyByCode).toHaveBeenCalledWith(
+      'AB12CD34',
+      'public',
+      '127.0.0.1',
+      'unknown',
+    );
   });
 });
