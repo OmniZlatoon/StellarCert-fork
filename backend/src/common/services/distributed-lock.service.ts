@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import type { Queue } from 'bull';
 import { randomUUID } from 'crypto';
 import { RATE_LIMIT_QUEUE_NAME } from '../rate-limiting/rate-limit.service';
 
