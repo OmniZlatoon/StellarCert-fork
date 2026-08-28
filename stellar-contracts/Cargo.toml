@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 
+
+# Cargo.toml
+[profile.release]
+panic = "abort"
+overflow-checks = true
+
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

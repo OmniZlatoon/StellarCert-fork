@@ -1455,3 +1455,20 @@ cert.owner = new_owner;
         }
     }
 }
+
+// contracts/stellar_cert/src/lib.rs
+// Example arithmetic fixes for overflow safety
+
+// Instead of:
+// let expires_at = timestamp() + expiration_days * 86400;
+let expiration_seconds = expiration_days.checked_mul(86400)
+    .ok_or(ContractError::ArithmeticOverflow)?;
+let expires_at = timestamp().checked_add(expiration_seconds)
+    .ok_or(ContractError::ArithmeticOverflow)?;
+
+// Instead of:
+// let total_cost = BASE + COST_PER_CERTIFICATE * ids.len() as u64;
+let variable_cost = (ids.len() as u64).checked_mul(COST_PER_CERTIFICATE)
+    .ok_or(ContractError::ArithmeticOverflow)?;
+let total_cost = BASE.checked_add(variable_cost)
+    .ok_or(ContractError::ArithmeticOverflow)?;
