@@ -79,9 +79,6 @@ jobs:
     strategy:
       matrix:
         node-version: [18, 20, 22]
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -89,7 +86,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: package-lock.json
-      - name: Install backend dependencies
+      # This repo uses npm workspaces: the lockfile lives at the root, so the
+      # whole workspace is installed from there and backend scripts are run
+      # per-workspace (installing from inside backend/ duplicates deps and
+      # breaks typecheck).
+      - name: Install dependencies (root workspace install)
         run: npm ci
       # Fork PRs don't receive repository secrets; skip validation there so the
       # required Test backend step can still run. Same-repo runs validate.
@@ -105,11 +106,11 @@ jobs:
           }
           "
       - name: Typecheck backend
-        run: npm run typecheck
+        run: npm run --workspace backend typecheck
       - name: Build backend
-        run: npm run build
+        run: npm run --workspace backend build
       - name: Test backend
-        run: npm test -- --ci
+        run: npm run --workspace backend test -- --ci
 
   contracts:
     needs: changes
