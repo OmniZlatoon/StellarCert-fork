@@ -91,7 +91,10 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install backend dependencies
         run: npm ci
+      # Fork PRs don't receive repository secrets; skip validation there so the
+      # required Test backend step can still run. Same-repo runs validate.
       - name: Validate backend environment
+        if: env.STELLAR_ISSUER_SECRET_KEY != '' && env.STELLAR_ISSUER_PUBLIC_KEY != ''
         run: |
           node -e "
           const required = ['STELLAR_ISSUER_SECRET_KEY', 'STELLAR_ISSUER_PUBLIC_KEY'];
