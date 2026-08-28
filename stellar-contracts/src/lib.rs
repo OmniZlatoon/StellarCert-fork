@@ -1494,3 +1494,35 @@ cert.owner = new_owner;
         (Symbol::new(&env, "transfer_initiated"), certificate_id, to_owner.clone()),
         CertificateEvent::TransferInitiated(event),
     );
+
+    // contracts/stellar_cert/src/lib.rs
+
+// Inside update_certificate_metadata:
+env.events().publish(
+    (Symbol::new(&env, "metadata_updated"), certificate_id),
+    CertificateEvent::MetadataUpdated(CertificateMetadataUpdatedEvent {
+        certificate_id,
+        updated_by: caller.clone(),
+    }),
+);
+
+// Inside set_certificate_expiry:
+env.events().publish(
+    (Symbol::new(&env, "expiry_set"), certificate_id),
+    CertificateEvent::ExpirySet(CertificateExpirySetEvent {
+        certificate_id,
+        expiry,
+    }),
+);
+
+// Inside add_issuer:
+env.events().publish(
+    (Symbol::new(&env, "issuer_added"), issuer.clone()),
+    CertificateEvent::IssuerAdded(IssuerAddedEvent { issuer: issuer.clone() }),
+);
+
+// Inside remove_issuer:
+env.events().publish(
+    (Symbol::new(&env, "issuer_removed"), issuer.clone()),
+    CertificateEvent::IssuerRemoved(IssuerRemovedEvent { issuer: issuer.clone() }),
+);

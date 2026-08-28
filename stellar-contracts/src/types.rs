@@ -271,3 +271,40 @@ pub enum CertificateEvent {
     TransferInitiated(TransferInitiatedEvent),
     // ... existing variants
 }
+// contracts/stellar_cert/src/types.rs
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CertificateMetadataUpdatedEvent {
+    pub certificate_id: u64,
+    pub updated_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CertificateExpirySetEvent {
+    pub certificate_id: u64,
+    pub expiry: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IssuerAddedEvent {
+    pub issuer: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IssuerRemovedEvent {
+    pub issuer: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CertificateEvent {
+    // ... existing variants
+    MetadataUpdated(CertificateMetadataUpdatedEvent),
+    ExpirySet(CertificateExpirySetEvent),
+    IssuerAdded(IssuerAddedEvent),
+    IssuerRemoved(IssuerRemovedEvent),
+}
