@@ -5,23 +5,6 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { CheckCircle } from 'lucide-react';
 import { certificateApi, VerificationResult } from '../api';
 
-// Debounce hook for search inputs
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-};
-
 type VerificationState = {
   loading: boolean;
   result: VerificationResult | null;
@@ -35,7 +18,6 @@ type ToastState = {
 export default function VerifyCertificate(): JSX.Element {
   const [searchParams] = useSearchParams();
   const [serial, setSerial] = useState('');
-  const debouncedSerial = useDebounce(serial, 300);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const qrScannerRef = useRef<Html5QrcodeScanner | null>(null);
   const [state, setState] = useState<VerificationState>({
@@ -98,13 +80,6 @@ export default function VerifyCertificate(): JSX.Element {
     }
   }, [searchParams, handleVerify]);
 
-  // Auto-verify when debounced serial changes (for manual input)
-  useEffect(() => {
-    if (debouncedSerial.trim() && debouncedSerial.length > 2) {
-      handleVerify(debouncedSerial.trim());
-    }
-  }, [debouncedSerial, handleVerify]);
-
   // Auto-dismiss toast after 3 seconds
   useEffect(() => {
     if (!toast) return;
@@ -128,6 +103,7 @@ export default function VerifyCertificate(): JSX.Element {
       qrScannerRef.current.render(
         (decodedText) => {
           setSerial(decodedText);
+          handleVerify(decodedText);
           setShowQrScanner(false);
           qrScannerRef.current?.clear();
           qrScannerRef.current = null;
@@ -146,7 +122,7 @@ export default function VerifyCertificate(): JSX.Element {
         qrScannerRef.current = null;
       }
     };
-  }, [showQrScanner]);
+  }, [showQrScanner, handleVerify]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
