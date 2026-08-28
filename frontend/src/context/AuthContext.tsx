@@ -47,11 +47,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     tokenStorage.getAccessToken(),
   );
 
-  // #559 — derive isAuthenticated once per token/user change, not on every render
+  // #559 — derive isAuthenticated once per token/user change, not on every render.
+  // Depend on the reactive `accessToken` state (not a direct storage read) so a
+  // silent refresh that rotates the token re-computes this memo (#785).
   const isAuthenticated = useMemo(() => {
-    const token = tokenStorage.getAccessToken();
-    return !!user && !!token && !isTokenExpired(token);
-  }, [user]);
+    return !!user && !!accessToken && !isTokenExpired(accessToken);
+  }, [user, accessToken]);
 
   useEffect(() => {
     // Check token expiration on app load
