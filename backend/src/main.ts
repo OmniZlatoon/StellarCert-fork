@@ -1,3 +1,4 @@
+// src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { GlobalExceptionFilter } from './common/exceptions/global-exception.filter';
@@ -16,7 +17,9 @@ import cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.set('trust proxy', true);
+  
+  // Secure trust proxy configuration (restricting to 1 trusted reverse proxy hop)
+  expressApp.set('trust proxy', 1);
 
   const sentryService = app.get(SentryService);
   const loggingService = app.get(LoggingService);
