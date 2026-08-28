@@ -110,6 +110,7 @@
       "ts"
     ],
     "rootDir": "src",
+    "testTimeout": 15000,
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
