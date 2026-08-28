@@ -1455,3 +1455,21 @@ cert.owner = new_owner;
         }
     }
 }
+
+// contracts/stellar_cert/src/lib.rs
+// (Inside initiate_transfer function, around line 545)
+
+    // ... existing storage persistence for pending transfer, index, and history ...
+
+    // Publish the TransferInitiated event
+    let event = TransferInitiatedEvent {
+        transfer_id,
+        certificate_id,
+        from_owner: current_owner.clone(),
+        to_owner: to_owner.clone(),
+    };
+    
+    env.events().publish(
+        (Symbol::new(&env, "transfer_initiated"), certificate_id, to_owner.clone()),
+        CertificateEvent::TransferInitiated(event),
+    );

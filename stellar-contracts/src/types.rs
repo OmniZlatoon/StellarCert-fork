@@ -254,3 +254,22 @@ pub struct CertPaginatedResult {
     pub limit: u32,
     pub has_next: bool,
 }
+
+// contracts/stellar_cert/src/types.rs
+// (Inside types definitions)
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransferInitiatedEvent {
+    pub transfer_id: u64,
+    pub certificate_id: u64,
+    pub from_owner: Address,
+    pub to_owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CertificateEvent {
+    TransferInitiated(TransferInitiatedEvent),
+    // ... existing variants
+}
