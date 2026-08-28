@@ -410,7 +410,7 @@ export const verifyCertificate = async (
 
   try {
     return await apiClient<VerificationResult>(
-      `/certificates/verify/${serialNumber}`,
+      `/certificates/verify/${encodeURIComponent(serialNumber)}`,
     );
   } catch (error) {
     return handleError(error, "verifyCertificate");

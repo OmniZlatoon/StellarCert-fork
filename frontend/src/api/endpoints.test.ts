@@ -66,4 +66,19 @@ describe('frontend api endpoints', () => {
     expect((fetchMock.mock.calls[2][1]?.headers as Headers).get('Authorization'))
       .toBe('Bearer fresh-token');
   });
+
+  it('encodes reserved characters in certificate serial numbers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ isValid: true }),
+    });
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    await endpoints.verifyCertificate('serial /?#');
+
+    expect(fetchMock.mock.calls[0][0]).toContain(
+      '/certificates/verify/serial%20%2F%3F%23',
+    );
+  });
 });
