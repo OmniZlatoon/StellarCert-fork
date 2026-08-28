@@ -17,6 +17,70 @@ import {
   RateLimitOptions,
 } from '../decorators/rate-limit.decorator';
 
+
+// src/modules/security/guards/rate-limit.guard.ts
+import { Injectable, CanActivate, ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+@Injectable()
+export class RateLimitGuard implements CanActivate {
+  private redisClient: Redis;
+  private defaultLimit: number;
+  private defaultTtl: number;
+
+  constructor(private configService: ConfigService) {
+    const redisHost = this.configService.get<string>('REDIS_HOST', 'localhost');
+    const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
+    this.redisClient = new Redis({ host: redisHost, port: redisPort });
+
+    this.defaultLimit = this.configService.get<number>('RATE_LIMIT_MAX', 100);
+    this.defaultTtl = this.configService.get<number>('RATE_LIMIT_TTL', 60); // in seconds
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    
+    // Derive client IP securely using Express trust proxy configuration
+    const clientIp = request.ip || request.connection.remoteAddress;
+    const userId = request.user?.id || 'anonymous';
+    const apiKey = request.headers['x-api-key'] || 'no-key';
+    const route = request.route?.path || request.url;
+
+    const rateKey = `ratelimit:${userId}:${clientIp}:${apiKey}:${route}`;
+
+    // Increment request count in Redis with an atomic multi-command execution
+    const multi = this.redisClient.multi();
+    multi.incr(rateKey);
+    multi.ttl(rateKey);
+    const results = await multi.exec();
+
+    if (!results) {
+      return true; // Fail open or handle as per policy
+    }
+
+    const currentCount = results[0][1] as number;
+    const currentTtl = results[1][1] as number;
+
+    // If key is new or TTL expired, set expiration window
+    if (currentTtl < 0) {
+      await this.redisClient.expire(rateKey, this.defaultTtl);
+    }
+
+    if (currentCount > this.defaultLimit) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: 'Rate limit exceeded. Please try again later.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return true;
+  }
+}
+
 interface RequestWithContext extends Request {
   user?: { id?: string; sub?: string };
   issuer?: { id: string; tier: string };
