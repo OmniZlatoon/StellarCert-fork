@@ -109,3 +109,43 @@ impl CertificateContract {
         );
     }
 }
+
+// contracts/certificate/src/lib.rs
+
+/// Updates the expiry timestamp for a certificate after validating status and future timestamp.
+pub fn set_certificate_expiry(
+    env: Env,
+    admin: Address,
+    cert_id: String,
+    new_expiry: u64,
+) {
+    admin.require_auth();
+
+    // 1. Fetch certificate from persistent storage
+    let mut cert: Certificate = env
+        .storage()
+        .persistent()
+        .get(&cert_id)
+        .unwrap_or_else(|| panic!("Certificate not found"));
+
+    // 2. Guard: Ensure certificate is currently Active
+    if cert.status != Symbol::new(&env, "Active") {
+        panic!("Cannot update expiry on a non-active certificate");
+    }
+
+    // 3. Guard: Validate that the new expiry timestamp is strictly in the future
+    let current_timestamp = env.ledger().timestamp();
+    if new_expiry <= current_timestamp {
+        panic!("New expiry timestamp must be greater than the current ledger timestamp");
+    }
+
+    // 4. Update expiry state and persist changes
+    cert.expires_at = new_expiry;
+    env.storage().persistent().set(&cert_id, &cert);
+
+    // 5. Emit event for certificate expiry update
+    env.events().publish(
+        (Symbol::new(&env, "CertificateExpiryUpdated"), cert_id),
+        new_expiry,
+    );
+}
