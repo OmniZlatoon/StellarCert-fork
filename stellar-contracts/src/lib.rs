@@ -1,3 +1,27 @@
+// contracts/stellar_cert/src/lib.rs
+// (Inside #[cfg(test)] module declarations)
+
+#[cfg(test)]
+mod admin_multisig_test;
+#[cfg(test)]
+mod crl_test;
+#[cfg(test)]
+mod issuer_test;
+#[cfg(test)]
+mod multisig_test;
+#[cfg(test)]
+mod status_test;
+#[cfg(test)]
+mod comprehensive_tests;
+#[cfg(test)]
+mod test;
+#[cfg(test)]
+mod test_backend;
+#[cfg(test)]
+mod issuer_management_test;
+// Note: metadata_test omitted as metadata.rs was previously cleaned up as orphaned dead code.
+// Note: CertificateManager.test.ts removed from Rust crate directory.
+
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
