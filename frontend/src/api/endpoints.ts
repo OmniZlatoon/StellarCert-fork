@@ -149,6 +149,7 @@ export async function apiClient<T>(
           try {
             const refreshResponse = await refreshTokens();
             tokenStorage.setAccessToken(refreshResponse.accessToken);
+            headers.set("Authorization", `Bearer ${refreshResponse.accessToken}`);
             // Forward the fresh user too so AuthContext updates both the user
             // object and isAuthenticated, not just the stored token (#560).
             notifyTokenRefreshed(refreshResponse.accessToken, refreshResponse.user);
