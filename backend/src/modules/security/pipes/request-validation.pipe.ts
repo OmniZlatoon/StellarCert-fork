@@ -35,7 +35,7 @@ export class RequestValidationPipe implements PipeTransform {
       );
     }
 
-    return sanitizedValue;
+    return object;
   }
 
   private toValidate(metatype: Constructor): boolean {
