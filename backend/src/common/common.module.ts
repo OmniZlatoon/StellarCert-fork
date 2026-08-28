@@ -29,6 +29,7 @@ import {
   RATE_LIMIT_QUEUE_NAME,
 } from './rate-limiting/rate-limit.service';
 import { Issuer } from '../modules/issuers/entities/issuer.entity';
+import { DistributedLockService } from './services/distributed-lock.service';
 
 @Global()
 @Module({
@@ -75,6 +76,7 @@ import { Issuer } from '../modules/issuers/entities/issuer.entity';
     MetricsService,
     SentryService,
     RateLimitService,
+    DistributedLockService,
 
     {
       provide: APP_GUARD,
@@ -131,6 +133,7 @@ import { Issuer } from '../modules/issuers/entities/issuer.entity';
     SentryService,
     JwtModule,
     RateLimitService,
+    DistributedLockService,
   ],
 })
 export class CommonModule implements NestModule {

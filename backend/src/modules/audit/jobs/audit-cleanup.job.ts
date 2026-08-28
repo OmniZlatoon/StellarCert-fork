@@ -4,6 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../services';
 import { AuditAction, AuditResourceType } from '../constants';
 import { LoggingService } from '../../../common/logging/logging.service';
+import { DistributedLockService } from '../../../common/services/distributed-lock.service';
+
+const AUDIT_CLEANUP_LOCK = 'stellar-cert:cron:audit-cleanup';
 
 @Injectable()
 export class AuditCleanupJob {
@@ -11,10 +14,18 @@ export class AuditCleanupJob {
     private auditService: AuditService,
     private configService: ConfigService,
     private readonly logger: LoggingService,
+    private readonly distributedLock: DistributedLockService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async handleCron() {
+    const lockToken = await this.distributedLock.acquire(AUDIT_CLEANUP_LOCK);
+    if (!lockToken) {
+      this.logger.log('Skipping audit log cleanup job; another instance owns the lock');
+      return;
+    }
+
+    try {
     // Retrieves AUDIT_RETENTION_DAYS from environment config
     // Defaults to 90 days if not configured
     const retentionDays =
@@ -80,6 +91,9 @@ export class AuditCleanupJob {
           logError.stack,
         );
       }
+    }
+    } finally {
+      await this.distributedLock.release(AUDIT_CLEANUP_LOCK, lockToken);
     }
   }
 }
