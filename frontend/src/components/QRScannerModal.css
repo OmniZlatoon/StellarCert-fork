@@ -1,0 +1,37 @@
+/* Styles formerly injected inline via `<style dangerouslySetInnerHTML>` in
+ * QRScannerModal. Moved to a real stylesheet so the component no longer emits
+ * a runtime `<style>` block containing a third-party Google Fonts `@import`
+ * (privacy/CSP concern). The DM Mono font is self-hosted via @font-face in
+ * src/index.css and loaded by the bundler, not fetched from Google at runtime.
+ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes scanLine {
+  0%, 100% { transform: translateY(-80px); opacity: 0.4; }
+  50% { transform: translateY(80px); opacity: 1; }
+}
+
+/* Override html5-qrcode default styles */
+#qr-scanner-container video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 0 !important;
+}
+
+#qr-scanner-container img {
+  display: none !important;
+}
+
+#qr-scanner-container > div:last-child {
+  display: none !important;
+}

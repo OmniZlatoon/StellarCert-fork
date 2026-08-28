@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import "./QRScannerModal.css";
 
 interface ScanResult {
   url: string;
@@ -139,19 +140,19 @@ export default function QRScannerModal({
     if (!scannerRef.current) return;
     try {
       const scanner = scannerRef.current as {
-        _localMediaStream?: {
-          getVideoTracks: () => MediaStreamTrack[];
-        };
+        getRunningTrackCapabilities: () => MediaTrackCapabilities;
+        applyVideoConstraints: (constraints: MediaTrackConstraints) => Promise<void>;
       };
-      const track = scanner._localMediaStream?.getVideoTracks()[0];
-      if (!track) return;
-
-      const capabilities = track.getCapabilities() as { torch?: boolean };
+      // `torch` is not part of the standard TS MediaTrackCapabilities lib type.
+      const capabilities = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
+        torch?: boolean;
+      };
       if (!capabilities.torch) return;
 
       const newVal = !torchOn;
-      // Use a localized type to bypass missing 'torch' in standard MediaTrackConstraints
-      await (track as unknown as { applyConstraints: (c: unknown) => Promise<void> }).applyConstraints({ advanced: [{ torch: newVal }] });
+      await scanner.applyVideoConstraints({
+        advanced: [{ torch: newVal }],
+      } as unknown as MediaTrackConstraints);
       setTorchOn(newVal);
     } catch {
       // torch not supported
@@ -502,38 +503,6 @@ export default function QRScannerModal({
           </div>
         </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
-
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes scanLine {
-          0%, 100% { transform: translateY(-80px); opacity: 0.4; }
-          50% { transform: translateY(80px); opacity: 1; }
-        }
-
-        /* Override html5-qrcode default styles */
-        #${containerId} video {
-          width: 100% !important;
-          height: 100% !important;
-          object-fit: cover !important;
-          border-radius: 0 !important;
-        }
-        #${containerId} img {
-          display: none !important;
-        }
-        #${containerId} > div:last-child {
-          display: none !important;
-        }
-      `}} />
     </div>
   );
 }
