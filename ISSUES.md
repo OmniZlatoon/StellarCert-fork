@@ -643,3 +643,393 @@
 **Title:** `admin_multisig.rs` stores every proposal in instance storage (unbounded growth)
 **Labels:** `bug` `contract`
 **Body:** Config, every `AdminProposal`, `CertificateContractId`, and each `RemovedIssuer` flag all live in the single instance storage entry (`admin_multisig.rs:146,210,238,352` via `set_instance`), which must be deserialized in full on every call and has a hard size ceiling. As proposals accumulate, the instance entry grows unbounded, raising per-call cost and eventually risking exceeding the limit — the same class of bug already flagged for `multisig.rs`/`shadow.rs`, but this file was not previously covered. Fix: move `AdminProposal` (and `RemovedIssuer`) records to `persistent()` storage keyed per id, keeping only config in instance storage.
+
+---
+
+<!-- ============================================================= -->
+<!-- Second audit batch — added 2026-08-27.                        -->
+<!-- Covers areas not reached in the first pass: infra/DevOps/CI,   -->
+<!-- backend bootstrap/config/DB/stellar, more frontend surface,    -->
+<!-- and remaining contract modules. All findings verified against  -->
+<!-- source; a sample were independently re-verified.               -->
+<!-- ============================================================= -->
+
+## Infrastructure / DevOps / CI
+
+---
+
+**Title:** Backend Docker healthcheck probes `/health` but the route is `/api/v1/health` — container is permanently "unhealthy"
+**Labels:** `bug` `devops`
+**Body:** The backend sets `app.setGlobalPrefix('api')` plus URI versioning (`defaultVersion: '1'`) and the health controller is `@Controller('health')`, so the endpoint is `/api/v1/health`. The compose healthcheck [docker-compose.yml:79](docker-compose.yml#L79) runs `wget ... http://localhost:3000/health`, which always 404s, so the container reports `unhealthy` forever and any orchestrator gating on health will never route traffic to it. `DOCKER_STARTUP_GUIDE.md:30-31` also tells users to open `http://localhost:3000/health`. Fix: point the healthcheck and docs at `http://localhost:3000/api/v1/health`.
+
+---
+
+**Title:** Prometheus scrapes `backend:3000/metrics` but metrics are served at `/api/v1/metrics` — no backend metrics collected
+**Labels:** `bug` `devops`
+**Body:** `MetricsController` is `@Controller('metrics')` with `@Get()`, so with the global `api` prefix + version the real path is `/api/v1/metrics`. [monitoring/prometheus.yml:6-9](monitoring/prometheus.yml#L6-L9) sets `metrics_path: '/metrics'`, so every scrape 404s and the monitoring stack collects nothing. Fix: set `metrics_path: '/api/v1/metrics'`, and decide whether the metrics route should be excluded from the versioned prefix.
+
+---
+
+**Title:** `VITE_API_URL` points at internal Docker host `backend` and drops `/v1` — the browser SPA cannot reach the API
+**Labels:** `bug` `devops`
+**Body:** The frontend is a browser app, so [docker-compose.yml:94](docker-compose.yml#L94) `VITE_API_URL: http://backend:3000/api` is unusable: `backend` resolves only inside the Docker network, not in the user's browser (which needs `http://localhost:3000`), and it omits the `/v1` version segment the backend requires. Also, Vite bakes env at build time, so this must be a build arg, not a runtime env. Fix: set `VITE_API_URL: http://localhost:3000/api/v1` (or route via nginx) and pass it as a build arg.
+
+---
+
+**Title:** No `.dockerignore` — `COPY . .` bakes `node_modules`, `.env`, and `.git` into images
+**Labels:** `security` `devops`
+**Body:** Both Dockerfiles do `COPY . .` with no `.dockerignore` anywhere in the repo (verified via `find`), so any local `.env` (real secrets), the entire `.git` history, and host `node_modules` (native binaries built for the wrong platform) get copied into image layers. Secrets copied into a layer persist even if later deleted. Fix: add `.dockerignore` files excluding `node_modules`, `.env*`, `.git`, `dist`, `coverage`, etc.
+
+---
+
+**Title:** CI workflow is a no-op that can never fail and pins a non-existent action version
+**Labels:** `bug` `devops` `ci`
+**Body:** [.github/workflows/ci.yml:14-15](.github/workflows/ci.yml#L14-L15) runs `npm test 2>/dev/null || echo "Tests completed"`, swallowing every failure so the job is always green; there is no build, lint, typecheck, or `cargo` step despite the root `ci:check`/`ci:build` scripts. It also uses `actions/checkout@v7`, which does not exist (current major is v4), so the workflow cannot even resolve the action, and `setup-node` has no dependency caching. Fix: use `actions/checkout@v4`, run real `npm ci && npm run ci:check && npm run ci:build` without swallowing exit codes, and add contract checks.
+
+---
+
+**Title:** `deploy-contracts.sh` echoes the admin secret key to stdout
+**Labels:** `security` `devops`
+**Body:** The final "copy these to your .env" block at [deploy-contracts.sh:114](deploy-contracts.sh#L114) prints `SOROBAN_ADMIN_SECRET=$ADMIN_SECRET`, dumping the raw Stellar admin secret into terminal scrollback and — if ever run in CI — into retained, potentially world-readable build logs. Anyone with that secret controls the deployed contracts. Fix: never echo the secret; instruct the operator to reuse the value they supplied, or write it to a `0600` file.
+
+---
+
+**Title:** `deploy-contracts.sh` mis-uses the Soroban CLI: treats a contract ID as a WASM hash and deploys the same WASM for all three contracts
+**Labels:** `bug` `devops`
+**Body:** [deploy-contracts.sh:32-104](deploy-contracts.sh#L32-L104) captures `CERT_WASM_HASH=$(soroban contract deploy ...)` — which returns a *contract ID*, not a WASM hash — then passes it to `--wasm-hash`, so the next deploy is malformed (hashes come from `contract install`). The multisig and CRL steps deploy the identical `certificate_revocation.wasm`, so all three "contracts" are the same code, and the `soroban` binary/`config network` usage is deprecated (renamed to the `stellar` CLI). Fix: use `stellar contract install` for the hash, deploy the correct per-contract WASM files, and migrate to the current CLI.
+
+---
+
+**Title:** `docker-compose` runs `NODE_ENV=production` with a hardcoded fallback `JWT_SECRET=change_me_in_production`
+**Labels:** `security` `devops`
+**Body:** [docker-compose.yml:50,63](docker-compose.yml#L50) sets `NODE_ENV: production` while defaulting `JWT_SECRET: ${JWT_SECRET:-change_me_in_production}`. If an operator brings the stack up without exporting `JWT_SECRET`, the API boots in production mode signing/verifying JWTs with a publicly known secret, enabling trivial token forgery and full auth bypass. The DB password is likewise a hardcoded literal (`stellarwave_password`). Fix: remove the insecure default so startup fails fast when `JWT_SECRET` is unset, and source DB credentials from secrets.
+
+---
+
+**Title:** nginx "production" profile exposes 443 but defines no TLS server and proxies to the Vite dev server
+**Labels:** `security` `devops`
+**Body:** The `nginx` service (production profile) publishes `443:443` and mounts `./nginx/ssl`, but [nginx/nginx.conf:20-44](nginx/nginx.conf#L20-L44) only has a `listen 80;` server — no `listen 443 ssl`, no cert directives, and no HTTP→HTTPS redirect, so "production" serves plaintext. It also `proxy_pass`es `/` to `frontend:5173` (the Vite dev server) and sets no security headers, gzip, or rate limiting; the mounted `./nginx/ssl` directory doesn't even exist in the repo. Fix: add a TLS server block with certs and an 80→443 redirect, serve a built static frontend, and add baseline hardening headers.
+
+---
+
+**Title:** Postgres migration bind-mount is ineffective — TypeORM `.ts` migrations mounted into a subdir the entrypoint never runs
+**Labels:** `bug` `devops`
+**Body:** [docker-compose.yml:14](docker-compose.yml#L14) mounts `./backend/src/database/migrations` into `/docker-entrypoint-initdb.d/migrations`, but the Postgres image only executes top-level `*.sql`/`*.sh` files (not nested subdirs), and TypeORM migrations are TypeScript, not SQL — so no schema is ever created this way. Yet `DOCKER_STARTUP_GUIDE.md:107` claims "the backend will automatically run database migrations." Fix: run migrations from the backend container on startup (e.g. `typeorm migration:run` in an entrypoint) and correct the guide.
+
+---
+
+**Title:** Frontend Dockerfile ships the Vite dev server as the container command; production profile uses it too
+**Labels:** `tech-debt` `devops`
+**Body:** [frontend/Dockerfile](frontend/Dockerfile) is `FROM node:18`, runs `npm install` (no lockfile determinism), never builds, and `CMD ["npm","run","dev"]` — a hot-reloading dev server with source maps, no optimization, running as root. Because the same `frontend` service is a dependency of the production-profile nginx, production effectively serves the dev server. Fix: add a multi-stage build (`vite build` → static assets served by nginx), pin a consistent Node version, use `npm ci`, and drop privileges.
+
+---
+
+**Title:** Backend Dockerfile uses `npm install` (not `npm ci`) and leaves the build toolchain in the final image
+**Labels:** `tech-debt` `devops`
+**Body:** Both stages of [backend/Dockerfile](backend/Dockerfile) run `npm install --legacy-peer-deps` rather than `npm ci`, so builds are non-reproducible and ignore the committed lockfile; the production stage also `apk add python3 g++ make` and never removes them, bloating the image and enlarging the runtime attack surface. Fix: use `npm ci --omit=dev`, and install native build deps in a throwaway stage so the final image is toolchain-free.
+
+---
+
+**Title:** `.gitignore` excludes `package-lock.json` while CI and Dockerfiles depend on a committed lockfile
+**Labels:** `tech-debt` `devops`
+**Body:** [.gitignore:3](.gitignore#L3) ignores `package-lock.json`/`yarn.lock`, yet the lockfiles are currently tracked, CI calls `npm ci` (which *requires* a lockfile), and reproducible Docker builds assume one. This is a footgun: regenerated lockfiles won't be staged by tooling that respects `.gitignore`, silently drifting dependency pins. Fix: remove the lockfiles from `.gitignore` and commit them intentionally.
+
+---
+
+**Title:** `.env.example` defaults to `NODE_ENV=production`, ships a placeholder secret, and omits required variables
+**Labels:** `enhancement` `devops`
+**Body:** Copying the example (as the guide instructs) yields `NODE_ENV=production` and a literal `JWT_SECRET=your-super-secret-jwt-key-change-this-in-production`, nudging developers into prod mode with a placeholder secret. It also omits variables the stack needs: the Soroban block lives only in `.env.soroban.example`, and `STORAGE_REQUIRED`, `EMAIL_*`, and `EMAIL_QUEUE_NAME` (referenced in `main.ts:27`) are absent. Fix: default the example to `NODE_ENV=development`, mark secrets as clearly fake, and consolidate all required keys into one documented template.
+
+---
+
+**Title:** Dependabot does not monitor Docker base images
+**Labels:** `enhancement` `devops`
+**Body:** [.github/dependabot.yml](.github/dependabot.yml) declares `npm` (root), `cargo`, and `github-actions` ecosystems but no `docker` ecosystem, so pinned bases (`node:18`, `postgres:15`, `nginx:alpine`) never get CVE/security updates. With npm declared only at `/` under workspaces, transitive updates to the `frontend`/`backend` sub-manifests may also be missed. Fix: add `package-ecosystem: docker` entries for `/backend` and `/frontend`, and consider explicit per-workspace npm entries. (Also verify the `@Servora/*` teams referenced in CODEOWNERS actually exist, or review requests will never fire.)
+
+---
+
+## Backend (second batch)
+
+---
+
+**Title:** Refresh token is signed with the access secret but verified with the refresh secret — refresh breaks whenever the two differ
+**Labels:** `bug` `backend` `auth`
+**Body:** `generateTokens` signs the refresh token via `this.jwtService.sign(payload, { expiresIn: '7d' })` (`user-auth.service.ts:300-301`), which uses the JwtModule secret = `JWT_ACCESS_SECRET`, but `refreshTokens()` verifies with `secret: JWT_REFRESH_SECRET` (`user-auth.service.ts:186-187`). In any correct production setup where the two secrets are distinct, every `/users/refresh-token` call fails with "Invalid refresh token", forcing constant re-logins. Fix: sign the refresh token explicitly with `JWT_REFRESH_SECRET` (and its own expiry) to match the verify call.
+
+---
+
+**Title:** TypeORM `migrations` glob points at the wrong directory — migrations never execute
+**Labels:** `bug` `backend`
+**Body:** [typeorm.config.ts:14](backend/src/config/typeorm.config.ts#L14) sets `migrations: [__dirname + '/../migrations/*{.ts,.js}']`, resolving to `src/migrations`/`dist/migrations`, but the only migration lives in `src/database/migrations/1780272000000-AddPasswordResetLookupAndRecipientName.ts`. With `migrationsRun: true`, the glob matches nothing, so the schema change is never applied on a fresh deploy — the app silently relies on `synchronize` instead. Fix: point the glob at `__dirname + '/../database/migrations/*{.ts,.js}'`.
+
+---
+
+**Title:** `synchronize: true` in every non-production environment risks silent schema/data changes
+**Labels:** `security` `backend`
+**Body:** [typeorm.config.ts:11,15](backend/src/config/typeorm.config.ts#L11) enables `synchronize` whenever `NODE_ENV !== 'production'` while `migrationsRun` is also `true`, mixing two conflicting schema strategies. Any environment where `NODE_ENV` is unset or mistyped (`Production`, `prod`) is treated as non-production and TypeORM auto-alters/drops columns to match entities, risking data loss. Fix: drive `synchronize` from an explicit boolean env flag defaulting to `false`, and never combine it with `migrationsRun`.
+
+---
+
+**Title:** No SSL/TLS option for the database connection
+**Labels:** `security` `backend`
+**Body:** The Postgres config in [typeorm.config.ts:3-16](backend/src/config/typeorm.config.ts#L3-L16) never sets `ssl`. In managed-Postgres/production deployments the connection (credentials and all certificate PII) travels unencrypted, and many providers reject non-SSL connections outright. Fix: add an env-driven `ssl` option (e.g. `ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined`, or a CA-pinned config).
+
+---
+
+**Title:** Bull-Board queue dashboard mounted at `/admin/queues` with no authentication
+**Labels:** `security` `backend`
+**Body:** [app.module.ts:52-55](backend/src/app.module.ts#L52-L55) mounts `BullBoardModule.forRoot({ route: '/admin/queues', ... })`, an Express router that is not a Nest controller, so the global `JwtAuthGuard`/`RolesGuard` never protect it. Anyone can browse, retry, and delete jobs — including email/webhook payloads containing PII and tokens. Fix: put the dashboard behind auth middleware (basic-auth or a JWT/admin check) on `/admin/queues`, or disable it in production.
+
+---
+
+**Title:** Swagger UI and full API spec are exposed unconditionally, even in production
+**Labels:** `security` `backend`
+**Body:** [main.ts:85-101](backend/src/main.ts#L85-L101) runs `SwaggerModule.setup('api/docs', ...)` on every boot with no `NODE_ENV` guard, publishing the complete endpoint/DTO catalog (auth, admin, multisig, audit) to unauthenticated users in production — a reconnaissance aid for attackers. Fix: wrap the Swagger setup in `if (process.env.NODE_ENV !== 'production')` or protect `api/docs` behind auth.
+
+---
+
+**Title:** Registration issues full tokens to unverified accounts; login never checks email verification
+**Labels:** `security` `backend`
+**Body:** `register()` sets `status: PENDING_VERIFICATION` yet immediately calls `generateTokens(user)` and returns them (`user-auth.service.ts:80-100`), and `login()` only rejects `SUSPENDED`/`!isActive` — never `isEmailVerified`/`PENDING_VERIFICATION` (`user-auth.service.ts:103-170`). Email verification is therefore effectively optional: a user can operate the entire authenticated API without confirming ownership of the email, enabling signup with someone else's address. Fix: do not return tokens on register, and block (or scope-limit) login until `isEmailVerified === true`. (Pairs with the frontend "logs in despite required verification" issue.)
+
+---
+
+**Title:** `User.role` column defaults to `ISSUER` — privilege escalation on any creation path that omits role
+**Labels:** `security` `backend`
+**Body:** [user.entity.ts:47-52](backend/src/modules/users/entities/user.entity.ts#L47-L52) declares `@Column({ ... default: UserRole.ISSUER })`. `register` overrides this with `USER`, but any other insert path (admin create flows, seeds, direct `repository.create` without a role) silently produces an ISSUER-privileged account able to mint certificates. Fix: default the column to the least-privileged role and set elevated roles explicitly.
+
+---
+
+**Title:** Soroban transactions are submitted without simulate/prepare and with a fixed 100-stroop fee — invocations cannot succeed; reads waste a real transaction
+**Labels:** `bug` `backend` `stellar`
+**Body:** Every `contract.call(...)` in [soroban.service.ts:104-116,260-270,336-356](backend/src/modules/stellar/services/soroban.service.ts#L104-L116) is built and signed with `fee: '100'` and no `server.prepareTransaction()`/`simulateTransaction()` step, so it lacks the Soroban resource footprint and resource fee the network requires — such transactions are rejected. Additionally, the read-only `getCertificate` is executed via `sendTransaction`, paying for a real on-chain transaction instead of a free simulation. Fix: simulate/prepare all invocations to attach footprint+fee, and use `simulateTransaction` for read-only calls.
+
+---
+
+**Title:** `getIssuerKeypair` always returns the admin keypair — all on-chain issuance/revocation is signed as the admin
+**Labels:** `security` `backend` `stellar`
+**Body:** The placeholder `getIssuerKeypair` in [soroban.service.ts:232-268](backend/src/modules/stellar/services/soroban.service.ts#L232-L268) ignores `issuerAddress` and returns `this.adminKeypair`, so `issueCertificate`/`revokeCertificate` are signed by the platform admin regardless of the real issuer. This collapses per-issuer authorization, makes on-chain provenance meaningless, and concentrates all signing authority in one key. Fix: implement real per-issuer key management (custodial signer service or delegated auth).
+
+---
+
+**Title:** `trust proxy` is unconditionally `true`, making `X-Forwarded-For` fully spoofable app-wide
+**Labels:** `security` `backend`
+**Body:** [main.ts:18-19](backend/src/main.ts#L18-L19) sets `expressApp.set('trust proxy', true)`, telling Express to trust the client-supplied `X-Forwarded-For` from any peer, so `request.ip` and every XFF-derived value (rate-limit buckets, audit `ipAddress`, brute-force keys) can be forged by adding a header. This is the upstream root cause behind several IP-based controls being bypassable. Fix: set `trust proxy` to the specific hop count or CIDR of the known load balancer, not `true`.
+
+---
+
+**Title:** App-wide `RateLimitGuard` uses an unbounded process-local `Map` — memory leak and multi-instance bypass
+**Labels:** `bug` `backend`
+**Body:** [security/guards/rate-limit.guard.ts:40,169-208](backend/src/modules/security/guards/rate-limit.guard.ts#L169-L208) creates a `LocalBucket` per distinct `user:/ip:/apiKey:`+route combination in an in-memory `Map` that is never swept, so under real traffic the map grows until OOM. Being process-local, counts reset on restart and are trivially bypassed by round-robining across replicas, and `clientIp` reads the spoofable first `x-forwarded-for` entry. (Distinct from the already-filed `ip-rate-limit.guard`.) Fix: back the limiter with Redis (shared, TTL-expiring keys) and derive client IP from trusted-proxy config.
+
+---
+
+**Title:** Global validation pipe returns the sanitized plain object instead of the transformed DTO, discarding type coercion; also registered twice
+**Labels:** `bug` `backend`
+**Body:** [request-validation.pipe.ts:22,38](backend/src/modules/security/pipes/request-validation.pipe.ts#L22) validates `plainToClass(metatype, sanitizedValue)` but then `return sanitizedValue` — the un-transformed value — so `@Type(() => Number)`/`@Transform` conversions are thrown away and controllers receive raw strings from query/body. The pipe is also registered twice (as `APP_PIPE` in `common.module.ts` and again via `app.useGlobalPipes` in `main.ts:74`), running on every request twice. Fix: `return object` (the transformed instance) and register the pipe once.
+
+---
+
+**Title:** Audit CSV export is silently truncated to 500 rows
+**Labels:** `bug` `backend`
+**Body:** `exportToCsv` calls `this.search({ ...searchDto, skip: 0, take: 50000 })` (`audit.service.ts:347-348`), but `search()` clamps `take` with `Math.min(searchDto.take || 50, 500)` (line 196). Admin CSV exports therefore never contain more than 500 records regardless of range, producing incomplete compliance exports with no error. Fix: give `exportToCsv` its own query path (or a higher, explicit cap with streaming) that bypasses the UI cap.
+
+---
+
+**Title:** Health endpoints leak raw error objects to unauthenticated callers
+**Labels:** `security` `backend`
+**Body:** The `@Public()` health controller builds `new HttpException({ ..., error }, ...)` in each catch block (`health.controller.ts:44-54,81-90,128-141,...`), embedding the raw caught error into the 503 body. A failing DB/Redis/Stellar check thus returns internal messages (connection strings, hostnames, stack fragments) to anyone hitting `/api/v1/health/*`. Fix: log the error server-side and return only a generic status string to the client.
+
+---
+
+**Title:** `AuditLog` is indexed on `createdAt` but all queries filter/sort/purge by `timestamp`
+**Labels:** `tech-debt` `backend` `performance`
+**Body:** Every search (`audit.timestamp BETWEEN`), the default `orderBy('audit.timestamp','DESC')`, and `cleanupOldLogs` (`timestamp <= cutoff`) operate on the unindexed `bigint timestamp` column, while the `@Index()` sits on the near-identical `createdAt` (`audit-log.entity.ts:15,120-123`). As the table grows this forces sequential scans/sorts on the hottest column. Fix: add `@Index(['timestamp'])` and drop the redundant `createdAt` index if unused.
+
+---
+
+**Title:** `certificate.verificationCode` and `expiresAt` are not indexed — public verification does a full table scan
+**Labels:** `tech-debt` `backend` `performance`
+**Body:** Roughly a dozen fields on `certificate.entity.ts` carry `@Index()`, but `verificationCode` (line 123, the lookup key for the public unauthenticated verify endpoint) and `expiresAt` (line 159, scanned by the expiration job) have none. The most attacker-reachable query in the system therefore scans the entire certificates table per request — an easy amplification/DoS vector. Fix: add a unique `@Index()` to `verificationCode` and an `@Index()` to `expiresAt`.
+
+---
+
+**Title:** Daily cleanup crons have no distributed lock — every replica runs them simultaneously
+**Labels:** `tech-debt` `backend`
+**Body:** Both `@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)` handlers (`audit/jobs/audit-cleanup.job.ts:16-17`, `files/services/cleanup.service.ts:16-17`) assume a single instance. In a multi-replica deployment every pod fires the audit-purge and temp-file cleanup at midnight concurrently, duplicating deletes and audit "job start/complete" records and racing on the same rows/filesystem. Fix: gate scheduled jobs behind a shared lock (Redis `SETNX`/leader election) or run them from a single dedicated worker.
+
+---
+
+## Frontend (second batch)
+
+---
+
+**Title:** 401-refresh retry reuses a stale `Authorization` header — silent refresh always re-sends the expired token
+**Labels:** `bug` `frontend` `auth`
+**Body:** The `headers` object is built once at the top of `apiClient` (`endpoints.ts:124-131`) with the current bearer token. On a 401, the code refreshes and calls `tokenStorage.setAccessToken(...)` then re-invokes `attemptRequest(attempt, true)`, but it never rebuilds `headers` or re-sets `Authorization` (`endpoints.ts:148-156`), so the retried request carries the same expired token and 401s again — making the whole silent-refresh mechanism a no-op even after the refresh route is fixed. Fix: after a successful refresh, `headers.set("Authorization", \`Bearer ${refreshResponse.accessToken}\`)` before retrying (or rebuild headers inside `attemptRequest`).
+
+---
+
+**Title:** `NotificationProvider` effect runs once with empty deps — notifications never start after an in-app login
+**Labels:** `bug` `frontend`
+**Body:** The mount effect (`NotificationContext.tsx:77-101`) reads `tokenStorage.getAccessToken()` and returns early if there is no token, with a `[]` dependency array. Since login happens client-side without a page reload, a user who logs in after mount never triggers `fetchNotifications()`/`connectSocket()`, so the bell stays empty and the socket never connects until a manual refresh. Fix: subscribe to auth/user state (or the token-refresh callback) and (re)connect when a token becomes available.
+
+---
+
+**Title:** `verifyCertificate` interpolates the raw serial into the URL path without encoding
+**Labels:** `bug` `frontend`
+**Body:** [endpoints.ts:412](frontend/src/api/endpoints.ts#L412) does `apiClient(\`/certificates/verify/${serialNumber}\`)`, inserting user input directly into the path. A serial containing spaces, `/`, `#`, `?`, or other reserved characters (plausible from a scanned QR payload) produces a malformed request or routes to the wrong path. Fix: `encodeURIComponent(serialNumber)`.
+
+---
+
+**Title:** `VerifyCertificate` statically imports `html5-qrcode`, bloating the public verify chunk (~380 kB) for all visitors
+**Labels:** `performance` `frontend`
+**Body:** `import { Html5QrcodeScanner } from 'html5-qrcode'` at [VerifyCertificate.tsx:4](frontend/src/pages/VerifyCertificate.tsx#L4) pulls the entire scanner library into the lazy verify chunk, so every visitor to the public `/verify` page downloads the camera/QR decoder even when they only type a serial. The existing `QRScannerModal.tsx` does this correctly via `await import("html5-qrcode")`. Fix: dynamic-import the library only when the scanner opens (or reuse `QRScannerModal`).
+
+---
+
+**Title:** Debounced auto-verify fires a public API call on every keystroke while typing a serial
+**Labels:** `enhancement` `frontend`
+**Body:** The effect at `VerifyCertificate.tsx:102-106` calls `handleVerify(debouncedSerial)` whenever the debounced input exceeds 2 characters, so as a user types a serial they trigger a stream of `/certificates/verify/...` requests that mostly return "not found," flashing a red "Verification Failed" panel until the last character is typed. Fix: only auto-verify on explicit submit / QR scan / URL param, or gate on a plausibly-complete length and suppress the error panel until submission.
+
+---
+
+**Title:** Login form inputs have no associated labels or `autocomplete` — accessibility and password-manager failures
+**Labels:** `bug` `frontend` `a11y`
+**Body:** In `Login.tsx:88-124` none of the `<label>`s use `htmlFor` and none of the inputs have an `id`, so labels are not programmatically associated — screen readers announce unlabeled fields and clicking a label doesn't focus its input. There are also zero `autoComplete` attributes anywhere in the app, so browsers/password managers can't offer `email`/`current-password`/`new-password` autofill. Fix: add matching `id`/`htmlFor` pairs and appropriate `autoComplete` values.
+
+---
+
+**Title:** `QRScannerModal` is not an accessible dialog — no focus trap, no `role`/`aria-modal`, no Escape-to-close
+**Labels:** `bug` `frontend` `a11y`
+**Body:** The modal root (`QRScannerModal.tsx:186-289`) is a plain `<div>` with a click-to-dismiss backdrop but no `role="dialog"`, `aria-modal="true"`, `aria-label`, focus trapping, initial-focus management, or `Escape` handler. Keyboard-only and screen-reader users cannot perceive it as a modal or dismiss it without a mouse, and focus can escape behind the overlay. Fix: add dialog semantics, trap focus, focus the close button on open, and close on `Escape`.
+
+---
+
+**Title:** `QRScannerModal` injects a Google Fonts `@import` and reaches into html5-qrcode private internals
+**Labels:** `security` `frontend`
+**Body:** The component renders `<style dangerouslySetInnerHTML>` whose CSS begins with `@import url('https://fonts.googleapis.com/...')` (`QRScannerModal.tsx:506-536`), adding a runtime third-party request from inside a security-sensitive verification flow (privacy/CSP concern). Separately, torch control accesses `scanner._localMediaStream` (`QRScannerModal.tsx:142-146`), an undocumented private field that will silently break on any library upgrade. Fix: self-host the font / move styles to CSS, and obtain the `MediaStreamTrack` through a supported API.
+
+---
+
+**Title:** `VerifyCertificate` has dead toast UI and uses `window.alert` for "Copy Link" feedback
+**Labels:** `tech-debt` `frontend`
+**Body:** `toast`/`setToast` state and its auto-dismiss effect exist (`VerifyCertificate.tsx:46,109-113`), but `setToast` is never called with a message (only `setToast(null)`), so the styled toast is unreachable dead code. Meanwhile the Copy-Link handler (line 488-494) falls back to a blocking `window.alert('Link copied to clipboard!')`, and `navigator.clipboard.writeText` is neither awaited nor error-handled (fails silently over HTTP or when permission is denied). Fix: drive the existing toast on copy success/failure and remove the alert.
+
+---
+
+**Title:** `ProtectedRoute` preserves only `pathname` in `returnUrl`, dropping the query string
+**Labels:** `bug` `frontend`
+**Body:** The unauthenticated redirect (`guard/ProtectedRoute.tsx:50-52`) builds `returnUrl` from `encodeURIComponent(location.pathname)` only, omitting `location.search`. A user deep-linked to `/certificates?status=revoked&page=3` is bounced to login and, after authenticating, returned to `/certificates` with all filters/pagination lost. Fix: use `encodeURIComponent(location.pathname + location.search)`. (Related to the already-filed returnUrl item, but this is the query-string-drop specifically.)
+
+---
+
+**Title:** `ProtectedRoute` role-path tables (`roleRoutes`/`PUBLIC_PATHS`/`isPathAllowed`) are dead, competing authorization logic
+**Labels:** `tech-debt` `frontend`
+**Body:** Every `<ProtectedRoute>` in `App.tsx` passes an explicit `allowedRoles`, so the `else` branch that consults `roleRoutes` via `isPathAllowed` (`guard/ProtectedRoute.tsx:5-40,56-65`) is never reached, and `PUBLIC_PATHS` (`/verify`) is redundant. This creates two drifting sources of truth for authorization (e.g. `roleRoutes[VERIFIER]` grants `/verify` while `App.tsx` does not). Fix: remove the unused branch/tables or drive all routing authorization from a single source.
+
+---
+
+**Title:** Duplicate QR-scanner implementations; the better lazy-loaded `QRScannerModal` is orphaned
+**Labels:** `tech-debt` `frontend`
+**Body:** Two full QR scanners exist: `VerifyCertificate` rolls its own with `Html5QrcodeScanner`, while the more capable `QRScannerModal` (torch, camera flip, dynamic import, friendly error mapping) is imported only by the unrouted `CertificateDemoPage`, so it never ships to users. This is duplicated, diverging maintenance surface. Fix: delete one implementation and route the survivor (prefer `QRScannerModal`).
+
+---
+
+**Title:** Three page components (`Home`, `View`, `Create`) are committed but routed nowhere
+**Labels:** `tech-debt` `frontend`
+**Body:** `pages/Home.tsx`, `pages/View.tsx`, and `pages/Create.tsx` are referenced in no route or lazy import (verified by grep), so they are dead files that still carry typecheck/lint overhead and mislead contributors about the real routing surface (distinct from the admin/`page.tsx` orphans already noted). Fix: wire them into the router if intended, otherwise delete them.
+
+---
+
+**Title:** Theme applied only in a post-mount `useEffect` — flash of wrong theme (FOUC) on load
+**Labels:** `enhancement` `frontend`
+**Body:** `applyTheme` runs inside a `useEffect` after React mounts (`ThemeContext.tsx:54-60`), so the initial HTML paints without the `dark` class before hydration corrects it; a dark-mode user sees a white flash on every full load. Fix: add a tiny inline `<script>` in `index.html` that reads `localStorage`/`prefers-color-scheme` and sets `document.documentElement.classList` before the app bundle executes.
+
+---
+
+**Title:** Vite build has no `manualChunks`/vendor splitting — large third-party libs bundle into route chunks
+**Labels:** `performance` `frontend`
+**Body:** [vite.config.ts:5-16](frontend/vite.config.ts#L5-L16) has no `build.rollupOptions.output.manualChunks`, so heavy deps (`html5-qrcode`, `socket.io-client`, `qrcode.react`, `lucide-react`) are duplicated into whichever route chunk imports them instead of a shared, long-cacheable vendor chunk — inflating first-load and defeating cross-route caching. Fix: add a `manualChunks` strategy (e.g. split `node_modules` vendors) and annotate `chunkSizeWarningLimit`.
+
+---
+
+**Title:** `tsconfig.app.json` omits `noUnusedLocals`/`noUnusedParameters` and ESLint doesn't enforce unused-var cleanup
+**Labels:** `tech-debt` `frontend`
+**Body:** Despite `strict: true`, neither `noUnusedLocals` nor `noUnusedParameters` is enabled (`tsconfig.app.json:2-21`) and the ESLint config adds no `@typescript-eslint/no-unused-vars` rule — yet `lint` runs with `--max-warnings 0`. This lets dead bindings accumulate unchecked, and committed `lint-report.json`/`eslint_out.json` artifacts suggest lint isn't consistently green. Fix: enable the unused-code compiler flags, add the ESLint rule, and remove the stray report artifacts from source control.
+
+---
+
+## Stellar Contracts (second batch)
+
+---
+
+**Title:** Persistent-entry TTL is bumped only on write, never on read — certificates silently expire from storage
+**Labels:** `bug` `contract`
+**Body:** Only `set_persistent` calls `persistent::extend_ttl` (`lib.rs:57-64`, `storage/ttl.rs:7-15`); every read path (`get_certificate`, `is_valid`, `batch_verify_certificates`, `certificate_exists`, pagination) does zero TTL bumping. A certificate issued once and never mutated has its persistent entry TTL fixed at issuance, and if it is not written again within that window the ledger entry is archived/evicted — the data becomes unreadable even though the certificate may be valid for years. Fix: bump TTL on read for hot entries (call `extend_ttl` inside `get_certificate`/`is_valid`), or expose a `bump_certificate_ttl` maintenance entry point and document the archival-restore requirement.
+
+---
+
+**Title:** `DEFAULT_TTL` conflates seconds with ledgers — the value is ~5× larger than its "30 days" comment
+**Labels:** `bug` `contract`
+**Body:** `DEFAULT_TTL = 30 * 24 * 60 * 60 = 2,592,000` is labeled "30 days in ledger blocks" (`storage/ttl.rs:4`), but Soroban TTL is measured in ledgers (~5 s each), so 2,592,000 ledgers is roughly 150 days, not 30 — the value was computed as seconds. As the default extension on every persistent write, the real archival horizon differs materially from intent, compounding the TTL-on-read bug above. Fix: compute from the real ~5 s ledger close time (e.g. `30 * 24 * 60 * 60 / 5`) or document the units unambiguously.
+
+---
+
+**Title:** Pagination indexing is inconsistent *within* `lib.rs` (0-indexed certs vs 1-indexed requests)
+**Labels:** `bug` `contract`
+**Body:** `paginate_certificates` computes `start = page.saturating_mul(limit)` (0-indexed) at `lib.rs:1333`, while `paginate_requests` computes `start = page.saturating_sub(1).saturating_mul(limit)` (1-indexed, per its comment) at `lib.rs:1434-1438`. A client using `page=1` gets the first page of requests but the *second* page of certificates, and `page=0` returns page 1 of certs but an empty/underflowed request page. (Distinct from the crl-vs-lib mismatch already filed.) Fix: standardize both on 1-indexed and share a single helper.
+
+---
+
+**Title:** Release profile has no `overflow-checks` — arithmetic wraps silently in the deployed WASM
+**Labels:** `security` `contract`
+**Body:** `[profile.release]` in [Cargo.toml:16-20](stellar-contracts/Cargo.toml#L16-L20) sets `panic = "abort"` but omits `overflow-checks = true`, so unchecked arithmetic — `expires_at = timestamp() + expiration_days*86400` (`lib.rs:911`, `multisig.rs:155`), `count + 1` counters, `total_cost = BASE + COST_PER_CERTIFICATE * ids.len()` (`lib.rs:1240`) — wraps instead of trapping in production. Debug builds trap while release silently corrupts, masking bugs until mainnet. Fix: add `overflow-checks = true` to `[profile.release]` and/or convert to `checked_add`/`saturating_*`.
+
+---
+
+**Title:** `set_certificate_expiry` doesn't validate the new expiry (may be in the past) or the certificate status
+**Labels:** `bug` `contract`
+**Body:** `set_certificate_expiry` (`lib.rs:1252-1272`) lets the admin set `expires_at` to any `u64`, including a past timestamp, which immediately makes `is_valid` return `false` with no warning; it also does not require the certificate to be `Active`, so it can silently re-date a revoked/frozen certificate. There is no lower-bound check against `env.ledger().timestamp()`. Fix: `panic!` if `expiry_time <= env.ledger().timestamp()`, and reject non-`Active` certificates (or document the intent).
+
+---
+
+**Title:** `transfer_fee` is recorded on every transfer but never charged or moved
+**Labels:** `bug` `contract`
+**Body:** `initiate_transfer` accepts a `transfer_fee: u64`, stores it on the `CertificateTransfer`, and copies it into `TransferHistoryEntry` (`lib.rs:489,531`; `types.rs:146,157`), but no code path performs any token transfer/`require_auth` for payment (zero token-client usage in the contract). The fee is purely decorative: the UI can display a fee that is never collected, and issuers relying on it lose revenue while users believe they paid. Fix: integrate a SAC token transfer in `complete_transfer` gated on `transfer_fee > 0`, or remove the field until fee handling exists.
+
+---
+
+**Title:** `initiate_transfer` emits no event and there is no `TransferInitiated` event type
+**Labels:** `enhancement` `contract`
+**Body:** `accept_transfer` and `complete_transfer` publish events, but `initiate_transfer` (`lib.rs:482-555`) writes the pending transfer, index, and history with no `env.events().publish(...)`, and `types.rs:108-122` defines no `TransferInitiatedEvent`. The intended new owner (`to_owner`) and off-chain indexers therefore have no on-chain signal that a transfer is awaiting acceptance, breaking the notification flow. Fix: add and publish a `TransferInitiatedEvent { transfer_id, certificate_id, from_owner, to_owner }`.
+
+---
+
+**Title:** Several state-changing functions emit no events (`update_certificate_metadata`, `set_certificate_expiry`, `add_issuer`, `remove_issuer`)
+**Labels:** `enhancement` `contract`
+**Body:** Four mutating entry points (`lib.rs:379-396,1252-1272,74-100,127-163`) change on-chain state with no event emission, so the backend webhook/indexer layer cannot react to metadata edits, expiry changes, or issuer allow-list changes. Fix: define and publish `CertificateMetadataUpdatedEvent`, `CertificateExpirySetEvent`, `IssuerAddedEvent`, and `IssuerRemovedEvent`.
+
+---
+
+**Title:** `reissue_certificate` reuses the `"issued"` event topic — indexers cannot distinguish a reissue from a fresh issuance
+**Labels:** `enhancement` `contract`
+**Body:** Both `issue_certificate` (`lib.rs:223-224`) and `reissue_certificate` (`lib.rs:468-469`) publish under `symbol_short!("issued")`. A reissue (which supersedes a parent and carries `parent_certificate_id`) is indistinguishable on-chain from an original issuance, so downstream consumers double-count issuance metrics and never learn a supersede occurred. Fix: emit a distinct `"reissued"` topic carrying the `old_id`/`parent` linkage.
+
+---
+
+**Title:** `get_transfer` (and public transfer views) return full records to anyone with no authorization
+**Labels:** `security` `contract`
+**Body:** `get_transfer`, `get_transfer_history_public`, and `get_pending_transfers_public` (`lib.rs:783-796`) read and return transfer details (owner addresses, fees, memos) with no `require_auth` and no participant check — unlike the hardened `get_pending_request` (`lib.rs:1080-1104`). Any observer can enumerate every pending transfer, its parties, and free-text memos. Fix: mirror the `get_pending_request` authorization pattern (restrict to `from_owner`/`to_owner`/admin), or explicitly document these as intentionally public.
+
+---
+
+**Title:** Large volume of orphaned, partially non-compiling contract source is committed but never in the module tree
+**Labels:** `tech-debt` `contract`
+**Body:** `lib.rs` declares only `types, multisig, crl, persistent, storage, admin_multisig` (+ test mods); none of `shadow.rs`, `metadata.rs`, `storage_helpers.rs`, `certificate/`, `request/`, or `request_status/` are declared as modules, so those "features" are dead and unreachable. Worse, `storage_helpers.rs:5-21` calls `env.storage().set(...)`/`.get(...)` (methods that don't exist on Soroban SDK 27 `Storage`) and uses `Vec` without importing it, so it wouldn't compile if wired in. Fix: delete the orphaned files or actually wire and repair them; non-compiling dead code invites accidental inclusion.
+
+---
+
+**Title:** Several contract test files are not wired into the crate — reported "tests" never run
+**Labels:** `tech-debt` `contract`
+**Body:** Only `admin_multisig_test`, `crl_test`, `issuer_test`, `multisig_test`, and `status_test` are declared under `#[cfg(test)]` in `lib.rs:41-50`. The remaining `*_test.rs` files (`comprehensive_tests.rs`, `test.rs`, `test_backend.rs`, `metadata_test.rs`, `issuer_management_test.rs`) are never compiled or run, and `test/CertificateManager.test.ts` is a stray TypeScript file inside the Rust crate — creating a false impression of coverage (`cargo test` skips them). Fix: declare the intended test modules (fixing any that reference dead code), and move/remove the TS file.

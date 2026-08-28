@@ -258,6 +258,14 @@ export class MetadataSchemaService {
             });
           }
         }
+        if (field.enumValues && !field.enumValues.includes(value)) {
+          errors.push({
+            field: field.name,
+            message: `"${field.name}" must be one of: ${field.enumValues.join(', ')}`,
+            value,
+            constraint: 'enum',
+          });
+        }
         break;
 
       case FieldType.NUMBER:

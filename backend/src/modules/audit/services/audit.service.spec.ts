@@ -40,7 +40,11 @@ describe('AuditService', () => {
         RequestContextService,
         {
           provide: LoggingService,
-          useValue: { error: jest.fn(), warn: jest.fn(), log: jest.fn() },
+          useValue: {
+            log: jest.fn(),
+            error: jest.fn(),
+            warn: jest.fn(),
+          },
         },
         {
           provide: getRepositoryToken(AuditLog),
