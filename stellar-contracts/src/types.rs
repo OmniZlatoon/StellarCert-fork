@@ -255,8 +255,6 @@ pub struct CertPaginatedResult {
     pub has_next: bool,
 }
 
-// contracts/stellar_cert/src/types.rs
-// (Inside types definitions)
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

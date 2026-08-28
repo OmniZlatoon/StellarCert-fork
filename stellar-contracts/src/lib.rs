@@ -1456,10 +1456,7 @@ cert.owner = new_owner;
     }
 }
 
-// contracts/stellar_cert/src/lib.rs
-// (Inside initiate_transfer function, around line 545)
 
-    // ... existing storage persistence for pending transfer, index, and history ...
 
     // Publish the TransferInitiated event
     let event = TransferInitiatedEvent {
