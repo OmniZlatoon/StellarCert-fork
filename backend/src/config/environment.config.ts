@@ -44,6 +44,34 @@ class EnvironmentVariables {
   DB_NAME: string;
 
   @IsOptional()
+  @IsBoolean()
+  DB_SSL?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  DB_SSL_REJECT_UNAUTHORIZED?: boolean;
+
+  @IsOptional()
+  @IsString()
+  DB_CA?: string;
+
+  @IsOptional()
+  @IsString()
+  BULL_BOARD_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  BULL_BOARD_USERNAME?: string;
+
+  @IsOptional()
+  @IsString()
+  BULL_BOARD_PASSWORD?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  BULL_BOARD_ENABLED?: boolean;
+
+  @IsOptional()
   @IsString()
   JWT_SECRET?: string;
 
@@ -233,6 +261,13 @@ export function validateEnv(config: Record<string, unknown> = {}): EnvironmentVa
       DB_USERNAME: e('DB_USERNAME') || 'postgres',
       DB_PASSWORD: e('DB_PASSWORD') || 'password',
       DB_NAME: e('DB_NAME') || 'stellarcert',
+      DB_SSL: e('DB_SSL') === 'true',
+      DB_SSL_REJECT_UNAUTHORIZED: e('DB_SSL_REJECT_UNAUTHORIZED') === 'true',
+      DB_CA: e('DB_CA'),
+      BULL_BOARD_USER: e('BULL_BOARD_USER'),
+      BULL_BOARD_USERNAME: e('BULL_BOARD_USERNAME'),
+      BULL_BOARD_PASSWORD: e('BULL_BOARD_PASSWORD'),
+      BULL_BOARD_ENABLED: e('BULL_BOARD_ENABLED') !== 'false',
       JWT_SECRET: e('JWT_SECRET'),
       JWT_ACCESS_SECRET: e('JWT_ACCESS_SECRET') || e('JWT_SECRET'),
       JWT_REFRESH_SECRET: e('JWT_REFRESH_SECRET') || e('JWT_SECRET'),

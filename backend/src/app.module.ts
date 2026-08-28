@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { resolve } from 'path';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -25,6 +25,7 @@ import { MetadataSchemaModule } from './modules/metadata-schema/metadata-schema.
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AdminAnalyticsModule } from './modules/admin-analytics/admin-analytics.module';
 import { SecurityModule } from './modules/security/security.module';
+import { BullBoardAuthMiddleware } from './common/middleware/bull-board-auth.middleware';
 
 @Module({
   imports: [
@@ -72,6 +73,15 @@ import { SecurityModule } from './modules/security/security.module';
     SecurityModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, BullBoardAuthMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(BullBoardAuthMiddleware)
+      .forRoutes(
+        { path: 'admin/queues', method: RequestMethod.ALL },
+        { path: 'admin/queues/*', method: RequestMethod.ALL },
+      );
+  }
+}

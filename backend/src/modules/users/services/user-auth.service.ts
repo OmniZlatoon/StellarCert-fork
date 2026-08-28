@@ -298,7 +298,8 @@ export class UserAuthService {
     });
 
     const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: '7d',
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d'),
     });
 
     // Store refresh token

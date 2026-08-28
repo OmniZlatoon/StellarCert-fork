@@ -31,3 +31,6 @@ export { ValidationPipe } from './pipes/validation.pipe';
 
 // DTOs
 export * from './dto';
+
+// Middleware
+export * from './middleware';

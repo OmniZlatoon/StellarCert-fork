@@ -11,6 +11,14 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
   synchronize: process.env.NODE_ENV !== 'production',
   logging: process.env.NODE_ENV !== 'production',
   autoLoadEntities: true,
-  migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+  migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   migrationsRun: true,
+  ssl:
+    process.env.DB_SSL === 'true'
+      ? {
+          rejectUnauthorized:
+            process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
+          ca: process.env.DB_CA,
+        }
+      : undefined,
 };
