@@ -112,42 +112,71 @@ export default function VerifyCertificate(): JSX.Element {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  // Initialize QR scanner
-  useEffect(() => {
-    if (showQrScanner && !qrScannerRef.current) {
-      qrScannerRef.current = new Html5QrcodeScanner(
-        'qr-reader',
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-        },
-        false
-      );
+// QR scanner
+useEffect(() => {
+  if (!showQrScanner || qrScannerRef.current) {
+    return;
+  }
 
-      qrScannerRef.current.render(
-        (decodedText) => {
-          setSerial(decodedText);
-          setShowQrScanner(false);
-          qrScannerRef.current?.clear();
-          qrScannerRef.current = null;
-        },
-        () => {
-          // Called continuously while no QR code is in view; intentionally
-          // ignored rather than surfaced, since it fires on nearly every
-          // scan frame and isn't a user-actionable error.
-        }
-      );
+  let cancelled = false;
+
+  const initializeScanner = async () => {
+    const { Html5QrcodeScanner } = await import('html5-qrcode');
+
+    if (cancelled) {
+      return;
     }
 
-    return () => {
-      if (qrScannerRef.current) {
-        qrScannerRef.current.clear();
-        qrScannerRef.current = null;
-      }
-    };
-  }, [showQrScanner]);
+    const scanner = new Html5QrcodeScanner(
+      'qr-reader',
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+      },
+      false
+    );
 
+    qrScannerRef.current = scanner;
+
+    scanner.render(
+      (decodedText) => {
+        setSerial(decodedText);
+        setShowQrScanner(false);
+
+        scanner
+          .clear()
+          .catch(() => {
+            // Scanner may already be stopped during component cleanup.
+          })
+          .finally(() => {
+            if (qrScannerRef.current === scanner) {
+              qrScannerRef.current = null;
+            }
+          });
+      },
+      () => {
+        // Called continuously while no QR code is in view.
+        // Intentionally ignored.
+      }
+    );
+  };
+
+  void initializeScanner();
+
+  return () => {
+    cancelled = true;
+
+    if (qrScannerRef.current) {
+      const scanner = qrScannerRef.current;
+      qrScannerRef.current = null;
+
+      scanner.clear().catch(() => {
+        // Scanner may already have been cleared.
+      });
+    }
+  };
+}, [showQrScanner]);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (serial.trim()) {
