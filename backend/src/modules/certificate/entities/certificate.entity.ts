@@ -99,8 +99,9 @@ export class Certificate {
   @Column({ nullable: true })
   revocationReason?: string;
 
-  @Column({ nullable: true })
-  revokedAt?: Date;
+@Column({ type: 'timestamp', nullable: true })
+@Index()
+expiresAt?: Date;
 
   @Column({ nullable: true })
   revokedBy?: string;
@@ -120,7 +121,8 @@ export class Certificate {
   stellarSequenceNumber?: string;
 
   @Column({ nullable: true })
-  verificationCode?: string;
+@Index({ unique: true })
+verificationCode?: string;
 
   @Column({ type: 'jsonb', nullable: true })
   verificationHistory?: VerificationHistoryRecord[];
