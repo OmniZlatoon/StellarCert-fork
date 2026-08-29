@@ -684,7 +684,7 @@ export const certificateApi = {
       const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
       return new Blob([csv], { type: "text/csv" });
     }
-    const response = await fetch(`${API_URL}/certificates/export`, {
+    const response = await apiClient.rawRequest(`${API_URL}/certificates/export`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -742,7 +742,7 @@ export const certificateApi = {
       return new Blob([csv], { type: "text/csv" });
     }
 
-    const response = await fetch(`${API_URL}/certificates/export/all`, {
+    const response = await apiClient.rawRequest(`${API_URL}/certificates/export/all`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1269,23 +1269,14 @@ export const issuerProfileApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/users/profile/picture`, {
+        const response = await apiClient<any>(`${API_URL}/users/profile/picture`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${tokenStorage.getAccessToken() ?? ""}`,
       },
       body: formData,
     });
-
-    if (!response.ok) {
-      const errorData: ApiError = await response.json().catch(() => ({
-        message: response.statusText || "Profile picture upload failed",
-        statusCode: response.status,
-      }));
-      throw errorData;
-    }
-
-    return response.json();
+    return response;
   },
 };
 
