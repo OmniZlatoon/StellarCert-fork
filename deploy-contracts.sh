@@ -33,14 +33,14 @@ cargo build --target wasm32-unknown-unknown --release
 
 # Deploy certificate contract
 echo "Deploying certificate contract..."
-CERT_WASM_HASH=$(soroban contract deploy \
+CERT_WASM_HASH=$(stellar contract install \
     --wasm target/wasm32-unknown-unknown/release/certificate_revocation.wasm \
     --source "$ADMIN_SECRET" \
     --rpc-url "$RPC_URL" \
     --network-passphrase "$(soroban config network pass $NETWORK)" \
     | tail -1)
 
-echo "Certificate contract deployed with WASM hash: $CERT_WASM_HASH"
+echo "Certificate contract WASM hash: $CERT_WASM_HASH"
 
 # Create certificate contract instance
 CERT_CONTRACT_ID=$(soroban contract deploy \
@@ -111,7 +111,9 @@ echo "SOROBAN_RPC_URL=$RPC_URL"
 echo "CERTIFICATE_CONTRACT_ID=$CERT_CONTRACT_ID"
 echo "MULTISIG_CONTRACT_ID=$MULTISIG_CONTRACT_ID"
 echo "CRL_CONTRACT_ID=$CRL_CONTRACT_ID"
-echo "SOROBAN_ADMIN_SECRET=$ADMIN_SECRET"
+if [ -z "${CI:-}" ]; then
+    echo "SOROBAN_ADMIN_SECRET=$ADMIN_SECRET"
+fi
 echo "ENABLE_SOROBAN_INTEGRATION=true"
 echo ""
 echo "Admin address: $ADMIN_ADDRESS"

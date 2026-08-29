@@ -60,7 +60,7 @@ services:
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
       STELLAR_ISSUER_SECRET_KEY: ${STELLAR_ISSUER_SECRET_KEY:-}
       STELLAR_ISSUER_PUBLIC_KEY: ${STELLAR_ISSUER_PUBLIC_KEY:-}
-      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_SECRET: ${JWT_SECRET:-stellarwave_secret_please_override}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
       ALLOWED_ORIGINS: http://localhost:5173,http://frontend:5173
       CORS_ORIGIN: http://localhost:5173,http://frontend:5173
