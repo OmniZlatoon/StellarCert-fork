@@ -158,6 +158,18 @@ export class CertificateTransferService {
       throw new NotFoundException('Associated certificate not found');
     }
 
+    if (certificate.status !== 'active') {
+      throw new ConflictException(
+        `Cannot transfer certificate with status: ${certificate.status}. Only active certificates can be transferred.`,
+      );
+    }
+
+    if (certificate.recipientEmail !== transfer.fromEmail) {
+      throw new ConflictException(
+        'Certificate owner has changed since transfer was initiated',
+      );
+    }
+
     const previousEmail = certificate.recipientEmail;
     const previousName = certificate.recipientName;
 
