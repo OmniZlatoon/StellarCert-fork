@@ -111,9 +111,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(this.adminKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(this.adminKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -166,9 +168,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(this.adminKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(this.adminKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -207,9 +211,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(this.adminKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(this.adminKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -265,9 +271,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(issuerKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(issuerKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -311,9 +319,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(issuerKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(issuerKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -351,9 +361,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(this.adminKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(this.adminKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);
@@ -421,9 +433,11 @@ export class SorobanService implements OnModuleInit {
         .setTimeout(30)
         .build();
 
-      transaction.sign(this.adminKeypair);
+      // Simulate to attach Soroban resource footprint and compute resource fee (#832)
+      const preparedTransaction = await this.server.prepareTransaction(transaction);
+      preparedTransaction.sign(this.adminKeypair);
 
-      const result = await this.server.sendTransaction(transaction);
+      const result = await this.server.sendTransaction(preparedTransaction);
 
       if (result.status !== 'PENDING') {
         throw new Error(`Transaction failed: ${result.status}`);

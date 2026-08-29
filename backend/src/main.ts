@@ -80,23 +80,25 @@ async function bootstrap() {
     new MonitoringInterceptor(metricsService, sentryService, loggingService),
   );
 
-  // Swagger setup
-  const config = new DocumentBuilder()
-    .setTitle('StellarCert API')
-    .setDescription('Certificate Management System API Documentation')
-    .setVersion('1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'access-token',
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      docExpansion: 'none',
-    },
-  });
+  // Swagger setup — disabled in production to prevent API reconnaissance (#829)
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('StellarCert API')
+      .setDescription('Certificate Management System API Documentation')
+      .setVersion('1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        'access-token',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+        docExpansion: 'none',
+      },
+    });
+  }
 
   // Enable graceful shutdown hooks
   app.enableShutdownHooks();

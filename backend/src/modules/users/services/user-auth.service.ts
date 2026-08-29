@@ -45,7 +45,7 @@ export class UserAuthService {
 
   async register(
     createUserDto: CreateUserDto,
-  ): Promise<{ user: IUserPublic; tokens: IAuthTokens }> {
+  ): Promise<{ user: IUserPublic; tokens: IAuthTokens | null }> {
     const { email, password, stellarPublicKey, username } = createUserDto;
 
     // Check if email already exists
@@ -89,14 +89,13 @@ export class UserAuthService {
 
     this.logger.log(`New user registered: ${user.email}`);
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
-
     await this.queueVerificationEmail(user, emailVerificationToken);
 
+    // Do not issue tokens until the email address is verified (#830).
+    // Return only the public user profile; the client should prompt for verification.
     return {
       user: this.toPublicUser(user),
-      tokens,
+      tokens: null,
     };
   }
 
@@ -130,6 +129,13 @@ export class UserAuthService {
     // Check if account is active
     if (!user.isActive) {
       throw new ForbiddenException('Account is deactivated');
+    }
+
+    // Block login until email is verified (#830)
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException(
+        'Email address not verified. Please check your inbox and verify your email before logging in.',
+      );
     }
 
     // Verify password
