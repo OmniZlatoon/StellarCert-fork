@@ -75,6 +75,15 @@ pub struct CertificateIssuedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CertificateReissuedEvent {
+    pub id: String,
+    pub old_id: String,
+    pub issuer: Address,
+    pub owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CertificateRevokedEvent {
     pub id: String,
     pub reason: String,
