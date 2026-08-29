@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback } from "react";
+```tsx
+import { useRef, useState, useCallback, useEffect } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 interface QRCodeModalProps {
@@ -17,6 +18,9 @@ export default function QRCodeModal({
   baseUrl,
 }: QRCodeModalProps) {
   const qrRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -26,10 +30,62 @@ export default function QRCodeModal({
       ? `${window.location.origin}/verify/${certificateId}`
       : `https://yourapp.com/verify/${certificateId}`);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousActiveElement = document.activeElement as HTMLElement | null;
+
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const modal = modalRef.current;
+      if (!modal) return;
+
+      const focusableElements = modal.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previousActiveElement?.focus();
+    };
+  }, [isOpen, onClose]);
+
   const handleDownload = useCallback(() => {
     setDownloading(true);
     const canvas = qrRef.current?.querySelector("canvas");
-    if (!canvas) return;
+
+    if (!canvas) {
+      setDownloading(false);
+      return;
+    }
 
     // Create a higher-res canvas with padding and branding
     const size = 400;
@@ -40,7 +96,11 @@ export default function QRCodeModal({
     exportCanvas.height = size + padding * 2 + labelHeight;
 
     const ctx = exportCanvas.getContext("2d");
-    if (!ctx) return;
+
+    if (!ctx) {
+      setDownloading(false);
+      return;
+    }
 
     // Background
     ctx.fillStyle = "#0f0f13";
@@ -53,7 +113,13 @@ export default function QRCodeModal({
 
     // QR code (white bg for scannability)
     ctx.fillStyle = "#ffffff";
-    ctx.roundRect(padding - 8, padding - 8, size + 16, size + 16, 8);
+    ctx.roundRect(
+      padding - 8,
+      padding - 8,
+      size + 16,
+      size + 16,
+      8,
+    );
     ctx.fill();
     ctx.drawImage(canvas, padding, padding, size, size);
 
@@ -116,6 +182,7 @@ export default function QRCodeModal({
             opacity: 1;
           }
         }
+
         @keyframes slideUp {
           from {
             opacity: 0;
@@ -127,6 +194,7 @@ export default function QRCodeModal({
           }
         }
       `}</style>
+
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ fontFamily: "'DM Mono', 'Courier New', monospace" }}
@@ -135,21 +203,28 @@ export default function QRCodeModal({
         <div
           className="absolute inset-0 bg-black/80 backdrop-blur-sm"
           onClick={onClose}
+          aria-hidden="true"
           style={{ animation: "fadeIn 0.2s ease" }}
         />
 
         {/* Modal */}
         <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-code-modal-title"
           className="relative w-full max-w-md"
           style={{
             animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
+          onClick={(event) => event.stopPropagation()}
         >
           {/* Glass card */}
           <div
             className="relative overflow-hidden rounded-2xl"
             style={{
-              background: "linear-gradient(145deg, #13131a 0%, #0d0d12 100%)",
+              background:
+                "linear-gradient(145deg, #13131a 0%, #0d0d12 100%)",
               border: "1px solid rgba(255,255,255,0.08)",
               boxShadow:
                 "0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04) inset",
@@ -174,6 +249,7 @@ export default function QRCodeModal({
                   >
                     Certificate QR
                   </span>
+
                   <span
                     className="text-xs px-2 py-0.5 rounded-full"
                     style={{
@@ -185,12 +261,20 @@ export default function QRCodeModal({
                     Verified
                   </span>
                 </div>
-                <h2 className="text-white font-semibold text-lg leading-tight truncate max-w-xs">
+
+                <h2
+                  id="qr-code-modal-title"
+                  className="text-white font-semibold text-lg leading-tight truncate max-w-xs"
+                >
                   {certificateName}
                 </h2>
               </div>
+
               <button
+                ref={closeButtonRef}
+                type="button"
                 onClick={onClose}
+                aria-label="Close QR code dialog"
                 className="flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200"
                 style={{
                   background: "rgba(255,255,255,0.05)",
@@ -198,11 +282,13 @@ export default function QRCodeModal({
                   border: "1px solid rgba(255,255,255,0.07)",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                  e.currentTarget.style.background =
+                    "rgba(255,255,255,0.1)";
                   e.currentTarget.style.color = "#fff";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                  e.currentTarget.style.background =
+                    "rgba(255,255,255,0.05)";
                   e.currentTarget.style.color = "#6b6b85";
                 }}
               >
@@ -213,6 +299,7 @@ export default function QRCodeModal({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
+                  aria-hidden="true"
                 >
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
@@ -238,6 +325,7 @@ export default function QRCodeModal({
                   <div
                     key={i}
                     className={`absolute w-5 h-5 ${cls}`}
+                    aria-hidden="true"
                     style={{ borderColor: "rgba(139,92,246,0.4)" }}
                   />
                 ))}
@@ -275,10 +363,12 @@ export default function QRCodeModal({
                   fill="none"
                   stroke="#6b6b85"
                   strokeWidth="2"
+                  aria-hidden="true"
                 >
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                 </svg>
+
                 <span
                   className="text-xs truncate flex-1"
                   style={{ color: "#7c7c9a", letterSpacing: "0.01em" }}
@@ -292,13 +382,18 @@ export default function QRCodeModal({
             <div className="px-6 pb-6 flex gap-2">
               {/* Copy button */}
               <button
+                type="button"
                 onClick={handleCopy}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                 style={{
                   background: copied
                     ? "rgba(34,197,94,0.15)"
                     : "rgba(255,255,255,0.05)",
-                  border: `1px solid ${copied ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  border: `1px solid ${
+                    copied
+                      ? "rgba(34,197,94,0.3)"
+                      : "rgba(255,255,255,0.08)"
+                  }`,
                   color: copied ? "#4ade80" : "#c4c4d4",
                 }}
               >
@@ -311,6 +406,7 @@ export default function QRCodeModal({
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.5"
+                      aria-hidden="true"
                     >
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
@@ -325,8 +421,16 @@ export default function QRCodeModal({
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
+                      aria-hidden="true"
                     >
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <rect
+                        x="9"
+                        y="9"
+                        width="13"
+                        height="13"
+                        rx="2"
+                        ry="2"
+                      />
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                     </svg>
                     Copy Link
@@ -336,6 +440,7 @@ export default function QRCodeModal({
 
               {/* Download button */}
               <button
+                type="button"
                 onClick={handleDownload}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                 style={{
@@ -357,6 +462,7 @@ export default function QRCodeModal({
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.5"
+                      aria-hidden="true"
                     >
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
@@ -370,7 +476,8 @@ export default function QRCodeModal({
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="2.5"
+                      strokeWidth="2"
+                      aria-hidden="true"
                     >
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
@@ -387,3 +494,4 @@ export default function QRCodeModal({
     </>
   );
 }
+```
