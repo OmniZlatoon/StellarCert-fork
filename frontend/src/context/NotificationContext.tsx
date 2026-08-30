@@ -97,7 +97,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             }
         };
 
-        window.addEventListener('storage', handleTokenRotation);
+useEffect(() => {
+  setTokenRefreshCallback((newToken) => {
+    connectSocket(newToken); // reconnect socket with fresh token
+  });
+
+  return () => setTokenRefreshCallback(null); // cleanup on unmount
+}, []);
 
         return () => {
             window.removeEventListener('storage', handleTokenRotation);
