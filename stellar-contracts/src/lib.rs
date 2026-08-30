@@ -775,13 +775,9 @@ impl CertificateContract {
     }
 
     /// Get transfer details (only the participants or the admin may view it).
-    pub fn get_transfer(
-        env: Env,
-        transfer_id: String,
-        caller: Address,
-    ) -> CertificateTransfer {
+    pub fn get_transfer(env: Env, transfer_id: String, caller: Address) -> CertificateTransfer {
         caller.require_auth();
-        let transfer = env
+        let transfer: CertificateTransfer = env
             .storage()
             .persistent()
             .get(&DataKey::Transfer(transfer_id))
