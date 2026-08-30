@@ -1,7 +1,5 @@
 import type { User } from './types';
 
-const ACCESS_TOKEN_KEY = 'accessToken';
-
 /**
  * Callback invoked after `apiClient` silently refreshes the access token, so
  * AuthContext can keep its reactive `isAuthenticated` / `user` state in sync.
