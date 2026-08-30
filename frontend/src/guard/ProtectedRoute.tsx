@@ -17,7 +17,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
   if (!user) {
     return (
       <Navigate
-        to={`/login?returnUrl=${encodeURIComponent(location.pathname)}`}
+        to={`/login?returnUrl=${encodeURIComponent(location.pathname + location.search)}`}
         replace
       />
     );

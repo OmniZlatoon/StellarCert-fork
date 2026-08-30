@@ -1307,6 +1307,14 @@ impl CertificateContract {
         Self::paginate_certificates(&env, ids, pagination)
     }
 
+    /// Page numbers are 1-indexed: the first page is `1` (a `page` of `0` is
+    /// normalized to the first page). Returns the zero-based start index for a
+    /// page. Shared by every paginated view in the contract so certificate and
+    /// request listings stay consistent with each other.
+    fn page_start_index(page: u32, limit: u32) -> u32 {
+        page.saturating_sub(1).saturating_mul(limit)
+    }
+
     fn paginate_certificates(
         env: &Env,
         cert_ids: Vec<String>,
@@ -1325,7 +1333,7 @@ impl CertificateContract {
             };
         }
 
-        let start = pagination.page.saturating_mul(pagination.limit);
+        let start = Self::page_start_index(pagination.page, pagination.limit);
         let end = total.min(start.saturating_add(pagination.limit));
         let mut index = start;
         while index < end {
@@ -1427,10 +1435,7 @@ impl CertificateContract {
         }
 
         // Page is 1-indexed. Calculate start index (0-indexed)
-        let start = pagination
-            .page
-            .saturating_sub(1)
-            .saturating_mul(pagination.limit);
+        let start = Self::page_start_index(pagination.page, pagination.limit);
         let end = total.min(start.saturating_add(pagination.limit));
 
         let mut index = start;
