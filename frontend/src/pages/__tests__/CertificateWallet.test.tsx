@@ -21,8 +21,17 @@ vi.mock("../../components/QRCodeModal", () => ({
 }));
 
 // ── AuthContext mock ───────────────────────────────────────────────────────
+// The user reference must keep a STABLE identity across renders: the page's
+// useEffect depends on `user`, and returning a fresh object on every render
+// would re-run the effect (and its setState) indefinitely, masking fetch
+// errors. The holder is mutable so a test can simulate an auth-state change
+// (which legitimately triggers the user-dependent re-fetch).
+const { walletAuth } = vi.hoisted(() => ({
+  walletAuth: { user: { id: "u1" } as { id: string } },
+}));
+
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1" } }),
+  useAuth: () => ({ user: walletAuth.user }),
 }));
 
 import CertificateWallet from "../CertificateWallet";
@@ -95,8 +104,11 @@ describe("CertificateWallet", () => {
       ).toBeInTheDocument(),
     );
 
-    // Next call succeeds — re-render to trigger useEffect again
+    // Next call succeeds — changing the authenticated user changes the
+    // identity of `user`, which re-runs the page's user-dependent effect
+    // and triggers a fresh fetch.
     mockedGetUserCertificates.mockResolvedValueOnce([MOCK_CERT]);
+    walletAuth.user = { id: "u2" };
     rerender(<CertificateWallet />);
 
     await waitFor(() =>
@@ -109,4 +121,4 @@ describe("CertificateWallet", () => {
       screen.getByText(/Blockchain Fundamentals/i),
     ).toBeInTheDocument();
   });
-});
+});
