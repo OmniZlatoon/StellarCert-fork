@@ -7,11 +7,12 @@ mod types;
 // Explicit re-exports replace `pub use types::*` to avoid ambiguous_glob_reexports
 pub use types::{
     CertPaginatedResult, Certificate, CertificateFrozenEvent, CertificateIssuedEvent,
-    CertificateReinstatedEvent, CertificateRevokedEvent, CertificateStatus,
-    CertificateSuspendedEvent, CertificateTransfer, CertificateUnfrozenEvent, CertificateVersion,
-    ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus, PaginatedResult, Pagination,
-    PendingRequest, RequestStatus, SignatureResult, TransferAcceptedEvent, TransferCompletedEvent,
-    TransferHistoryEntry, TransferStatus, VerificationReport, VerificationResult,
+    CertificateReinstatedEvent, CertificateReissuedEvent, CertificateRevokedEvent,
+    CertificateStatus, CertificateSuspendedEvent, CertificateTransfer, CertificateUnfrozenEvent,
+    CertificateVersion, ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus,
+    PaginatedResult, Pagination, PendingRequest, RequestStatus, SignatureResult,
+    TransferAcceptedEvent, TransferCompletedEvent, TransferHistoryEntry, TransferStatus,
+    VerificationReport, VerificationResult,
 };
 
 // mod metadata;
@@ -456,11 +457,13 @@ impl CertificateContract {
         // Store new certificate
         Self::set_persistent(&env, &DataKey::Certificate(new_id.clone()), &new_cert);
 
-        // Emit issuance event
+        // Emit a distinct reissued event so indexers can tell a reissue apart
+        // from a fresh issuance and observe the parent (old) certificate link.
         env.events().publish(
-            (symbol_short!("issued"), new_id.clone()),
-            CertificateIssuedEvent {
+            (symbol_short!("reissued"), new_id.clone()),
+            CertificateReissuedEvent {
                 id: new_id,
+                old_id: old_id.clone(),
                 issuer,
                 owner: new_cert.owner,
             },
@@ -771,22 +774,75 @@ impl CertificateContract {
             .unwrap_or(0)
     }
 
-    /// Get transfer details
-    pub fn get_transfer(env: Env, transfer_id: String) -> CertificateTransfer {
-        env.storage()
+    /// Get transfer details (only the participants or the admin may view it).
+    pub fn get_transfer(env: Env, transfer_id: String, caller: Address) -> CertificateTransfer {
+        caller.require_auth();
+        let transfer: CertificateTransfer = env
+            .storage()
             .persistent()
             .get(&DataKey::Transfer(transfer_id))
-            .expect("Transfer not found")
+            .expect("Transfer not found");
+        // Either participant (from/to owner) or the admin may view a transfer.
+        // A single combined check is required: calling `assert_admin_or` twice in
+        // sequence only passes for the admin, since each call panics unless the
+        // caller is that exact address, which rejects legitimate participants.
+        Self::assert_admin_or_either(&env, &caller, &transfer.from_owner, &transfer.to_owner);
+        transfer
     }
 
-    /// Get transfer history for a certificate (public wrapper)
-    pub fn get_transfer_history_public(env: Env, certificate_id: String) -> Vec<String> {
+    /// Get transfer history for a certificate (owner/admin only).
+    pub fn get_transfer_history_public(
+        env: Env,
+        certificate_id: String,
+        caller: Address,
+    ) -> Vec<String> {
+        caller.require_auth();
+        let cert: Certificate = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Certificate(certificate_id.clone()))
+            .expect("Certificate not found");
+        Self::assert_admin_or(&env, &caller, &cert.owner);
         Self::get_transfer_history(&env, certificate_id)
     }
 
-    /// Get pending transfers for an address (public wrapper)
-    pub fn get_pending_transfers_public(env: Env, address: Address) -> Vec<String> {
+    /// Get pending transfers for an address (the address itself or admin only).
+    pub fn get_pending_transfers_public(
+        env: Env,
+        address: Address,
+        caller: Address,
+    ) -> Vec<String> {
+        caller.require_auth();
+        Self::assert_admin_or(&env, &caller, &address);
         Self::get_pending_transfers(&env, address)
+    }
+
+    /// Authorization check: allow `caller` only when it is `allowed` or the
+    /// contract admin. Mirrors the `get_pending_request` access pattern.
+    fn assert_admin_or(env: &Env, caller: &Address, allowed: &Address) {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+        if caller != allowed && caller != &admin {
+            panic!("Not authorized to view this data");
+        }
+    }
+
+    /// Authorization check for data with two authorized parties: allow `caller`
+    /// only when it is `a`, `b`, or the contract admin. Used by `get_transfer`
+    /// so either the sending or receiving owner (as well as the admin) can view
+    /// the transfer, in a single combined check.
+    fn assert_admin_or_either(env: &Env, caller: &Address, a: &Address, b: &Address) {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+        if caller != a && caller != b && caller != &admin {
+            panic!("Not authorized to view this data");
+        }
     }
 
     /// Get total transfer count (public wrapper)
