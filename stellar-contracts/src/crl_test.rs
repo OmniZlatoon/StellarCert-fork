@@ -359,3 +359,88 @@ fn test_set_admin_allows_revocation() {
     );
     assert!(client.is_revoked(&cert_id));
 }
+
+
+// ─── Merkle root security (#806 / #807) ───────────────────────────────────────
+
+#[test]
+fn test_merkle_root_handles_odd_leaf_count_without_panic() {
+    let (env, issuer, cert_contract) = setup();
+    let (_, client) = make_client(&env);
+    client.initialize(&issuer, &cert_contract);
+
+    for (i, reason) in [
+        ("CERT-ODD-1", RevocationReason::KeyCompromise),
+        ("CERT-ODD-2", RevocationReason::CACompromise),
+        ("CERT-ODD-3", RevocationReason::Superseded),
+    ]
+    .iter()
+    .enumerate()
+    {
+        client.revoke_certificate(
+            &issuer,
+            &String::from_str(&env, reason.0),
+            &reason.1,
+            &None,
+        );
+        let root = client.get_merkle_root();
+        assert_eq!(root.len(), 64, "root hex length after {} revocations", i + 1);
+    }
+    assert_eq!(client.get_crl_info().revoked_count, 3);
+}
+
+#[test]
+fn test_merkle_root_accepts_certificate_id_longer_than_256_bytes() {
+    let (env, issuer, cert_contract) = setup();
+    let (_, client) = make_client(&env);
+    client.initialize(&issuer, &cert_contract);
+
+    let long_id = String::from_str(
+        &env,
+        "CERT-LONG-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-END",
+    );
+    assert!(long_id.len() > 256);
+
+    client.revoke_certificate(
+        &issuer,
+        &long_id,
+        &RevocationReason::KeyCompromise,
+        &None,
+    );
+    assert!(client.is_revoked(&long_id));
+    assert_eq!(client.get_merkle_root().len(), 64);
+
+    client.revoke_certificate(
+        &issuer,
+        &String::from_str(&env, "CERT-AFTER-LONG"),
+        &RevocationReason::Superseded,
+        &None,
+    );
+    assert_eq!(client.get_crl_info().revoked_count, 2);
+}
+
+#[test]
+fn test_merkle_root_changes_when_new_id_revoked() {
+    let (env, issuer, cert_contract) = setup();
+    let (_, client) = make_client(&env);
+    client.initialize(&issuer, &cert_contract);
+
+    let empty_root = client.get_merkle_root();
+    client.revoke_certificate(
+        &issuer,
+        &String::from_str(&env, "CERT-A"),
+        &RevocationReason::KeyCompromise,
+        &None,
+    );
+    let one_root = client.get_merkle_root();
+    assert_ne!(empty_root, one_root);
+
+    client.revoke_certificate(
+        &issuer,
+        &String::from_str(&env, "CERT-B"),
+        &RevocationReason::CACompromise,
+        &None,
+    );
+    let two_root = client.get_merkle_root();
+    assert_ne!(one_root, two_root);
+}

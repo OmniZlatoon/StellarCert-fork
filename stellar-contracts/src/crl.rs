@@ -2,6 +2,8 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, IntoVal, String, Val, Vec,
 };
 
+extern crate alloc;
+
 const DEFAULT_UPDATE_WINDOW_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[contracttype]
@@ -291,15 +293,46 @@ impl CRLContract {
     }
 
     fn build_merkle_root(env: &Env, revoked_ids: &Vec<String>) -> String {
+        // Domain-separation tags (RFC 6962 / Certificate Transparency style):
+        //   leaf preimage  = 0x00 || cert_id_bytes
+        //   node preimage  = 0x01 || left_hash || right_hash
+        // This prevents second-preimage attacks where an internal node is
+        // presented as a leaf (or vice versa) in an inclusion proof.
+
         fn sha256_bytes(env: &Env, data: &Bytes) -> BytesN<32> {
             env.crypto().sha256(data).into()
         }
 
+        /// Hash an internal node: SHA-256(0x01 || left || right).
         fn pair_hash(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
-            let mut combined = [0u8; 64];
-            combined[..32].copy_from_slice(&left.to_array());
-            combined[32..].copy_from_slice(&right.to_array());
+            let mut combined = [0u8; 65];
+            combined[0] = 0x01; // NODE_TAG
+            combined[1..33].copy_from_slice(&left.to_array());
+            combined[33..65].copy_from_slice(&right.to_array());
             sha256_bytes(env, &Bytes::from_slice(env, &combined))
+        }
+
+        /// Convert certificate ID String → Bytes without a fixed stack buffer.
+        /// Uses a heap buffer sized exactly to `id.len()` so over-long IDs no
+        /// longer panic on a 256-byte array (revocation DoS, #806).
+        fn string_to_bytes(env: &Env, id: &String) -> Bytes {
+            let len = id.len() as usize;
+            if len == 0 {
+                return Bytes::new(env);
+            }
+            let mut buf = alloc::vec::Vec::with_capacity(len);
+            buf.resize(len, 0u8);
+            id.copy_into_slice(buf.as_mut_slice());
+            Bytes::from_slice(env, &buf)
+        }
+
+        /// Leaf hash: SHA-256(0x00 || id_bytes).
+        fn leaf_hash(env: &Env, id: &String) -> BytesN<32> {
+            let id_bytes = string_to_bytes(env, id);
+            let mut preimage = Bytes::new(env);
+            preimage.push_back(0x00); // LEAF_TAG
+            preimage.append(&id_bytes);
+            sha256_bytes(env, &preimage)
         }
 
         fn hash_to_hex(env: &Env, hash: &BytesN<32>) -> String {
@@ -317,32 +350,34 @@ impl CRLContract {
         }
 
         if revoked_ids.is_empty() {
-            return hash_to_hex(env, &sha256_bytes(env, &Bytes::new(env)));
+            // Empty tree: domain-separated hash of empty leaf payload
+            let mut empty = Bytes::new(env);
+            empty.push_back(0x00); // LEAF_TAG
+            return hash_to_hex(env, &sha256_bytes(env, &empty));
         }
 
-        // Build leaf hashes from certificate IDs
+        // Build domain-separated leaf hashes from certificate IDs
         let mut layer: Vec<BytesN<32>> = Vec::new(env);
         for id in revoked_ids.iter() {
-            let len = id.len() as usize;
-            let mut buf = [0u8; 256];
-            id.copy_into_slice(&mut buf[..len]);
-            let id_bytes = Bytes::from_slice(env, &buf[..len]);
-            layer.push_back(sha256_bytes(env, &id_bytes));
+            layer.push_back(leaf_hash(env, &id));
         }
 
-        // Combine pairs up the tree until one root remains
+        // Combine pairs up the tree until one root remains.
+        // Odd count: promote the unpaired node to the next layer *without*
+        // duplicating it (avoids the classic odd-leaf duplication forgery).
         while layer.len() > 1 {
             let mut next: Vec<BytesN<32>> = Vec::new(env);
             let mut i = 0u32;
-            while i < layer.len() {
+            let len = layer.len();
+            while i + 1 < len {
                 let left = layer.get_unchecked(i);
-                let right = if i + 1 < layer.len() {
-                    layer.get_unchecked(i + 1)
-                } else {
-                    left.clone() // duplicate odd leaf
-                };
+                let right = layer.get_unchecked(i + 1);
                 next.push_back(pair_hash(env, &left, &right));
                 i += 2;
+            }
+            if i < len {
+                // Promote the last unpaired node unchanged
+                next.push_back(layer.get_unchecked(i));
             }
             layer = next;
         }
