@@ -215,6 +215,42 @@ export async function apiClient<T>(
   }
 }
 
+/**
+ * Raw request helper for endpoints that need the underlying `Response`
+ * (file/blob downloads and multipart uploads) rather than the parsed,
+ * envelope-unwrapped JSON that `apiClient` returns. It attaches the bearer
+ * token and performs a single transparent refresh-and-retry on a 401, but does
+ * NOT force a JSON `Content-Type` — so callers can send `FormData` (letting the
+ * browser set the multipart boundary) or their own JSON body.
+ */
+export async function apiClientRaw(
+  url: string,
+  options: RequestInit & { skipAuth?: boolean } = {},
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+
+  if (!options.skipAuth) {
+    const token = tokenStorage.getAccessToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  let response = await fetch(url, { ...options, headers, credentials: "include" });
+
+  if (response.status === 401 && !options.skipAuth) {
+    try {
+      const refreshResponse = await refreshTokens();
+      tokenStorage.setAccessToken(refreshResponse.accessToken);
+      headers.set("Authorization", `Bearer ${refreshResponse.accessToken}`);
+      notifyTokenRefreshed(refreshResponse.accessToken, refreshResponse.user);
+      response = await fetch(url, { ...options, headers, credentials: "include" });
+    } catch {
+      tokenStorage.clearTokens();
+    }
+  }
+
+  return response;
+}
+
 // Dummy data generators
 const dummyData = {
   users: [
@@ -684,7 +720,7 @@ export const certificateApi = {
       const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
       return new Blob([csv], { type: "text/csv" });
     }
-    const response = await apiClient.rawRequest(`${API_URL}/certificates/export`, {
+    const response = await apiClientRaw(`${API_URL}/certificates/export`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -742,7 +778,7 @@ export const certificateApi = {
       return new Blob([csv], { type: "text/csv" });
     }
 
-    const response = await apiClient.rawRequest(`${API_URL}/certificates/export/all`, {
+    const response = await apiClientRaw(`${API_URL}/certificates/export/all`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1269,14 +1305,21 @@ export const issuerProfileApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-        const response = await apiClient<any>(`${API_URL}/users/profile/picture`, {
+    // Multipart upload: route through apiClientRaw so the browser sets the
+    // multipart boundary (apiClient would force application/json and break it),
+    // while still getting auth + 401-refresh handling.
+    const response = await apiClientRaw(`${API_URL}/users/profile/picture`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokenStorage.getAccessToken() ?? ""}`,
-      },
       body: formData,
     });
-    return response;
+    if (!response.ok) {
+      const errorData: ApiError = await response.json().catch(() => ({
+        message: response.statusText || "Profile picture upload failed",
+        statusCode: response.status,
+      }));
+      throw errorData;
+    }
+    return response.json();
   },
 };
 
