@@ -80,6 +80,17 @@ impl AdminMultisigContract {
         crate::persistent::extend_instance_ttl(env, None);
     }
 
+    /// Persist a keyed record in persistent storage (per-id entries).
+    /// Used for AdminProposal and RemovedIssuer so instance storage stays bounded.
+    fn set_persistent<K, V>(env: &Env, key: &K, value: &V)
+    where
+        K: IntoVal<Env, Val> + Clone,
+        V: IntoVal<Env, Val>,
+    {
+        env.storage().persistent().set(key, value);
+        crate::persistent::extend_ttl(env, key, None);
+    }
+
     pub fn init_admin_multisig(
         env: Env,
         threshold: u32,
@@ -126,7 +137,7 @@ impl AdminMultisigContract {
         Self::require_signer(&config.signers, &proposer);
 
         let proposal_key = AdminMultisigDataKey::AdminProposal(proposal_id.clone());
-        if env.storage().instance().has(&proposal_key) {
+        if env.storage().persistent().has(&proposal_key) {
             panic!("Proposal already exists");
         }
 
@@ -143,7 +154,7 @@ impl AdminMultisigContract {
             status: AdminProposalStatus::Pending,
         };
 
-        Self::set_instance(&env, &proposal_key, &proposal);
+        Self::set_persistent(&env, &proposal_key, &proposal);
         env.events().publish(
             (symbol_short!("proposal"), symbol_short!("created")),
             ProposalCreatedEvent {
@@ -165,7 +176,7 @@ impl AdminMultisigContract {
         let proposal_key = AdminMultisigDataKey::AdminProposal(proposal_id.clone());
         let mut proposal: AdminProposal = env
             .storage()
-            .instance()
+            .persistent()
             .get(&proposal_key)
             .expect("Proposal not found");
 
@@ -176,7 +187,7 @@ impl AdminMultisigContract {
         let current_ledger = env.ledger().sequence();
         if current_ledger > proposal.expires_at_ledger {
             proposal.status = AdminProposalStatus::Expired;
-            Self::set_instance(&env, &proposal_key, &proposal);
+            Self::set_persistent(&env, &proposal_key, &proposal);
             return AdminProposalStatus::Expired;
         }
 
@@ -207,7 +218,7 @@ impl AdminMultisigContract {
             status = AdminProposalStatus::Approved;
         }
 
-        Self::set_instance(&env, &proposal_key, &proposal);
+        Self::set_persistent(&env, &proposal_key, &proposal);
 
         if status == AdminProposalStatus::Approved {
             status = Self::execute_action(env, proposal_id);
@@ -222,7 +233,7 @@ impl AdminMultisigContract {
         let proposal_key = AdminMultisigDataKey::AdminProposal(proposal_id.clone());
         let mut proposal: AdminProposal = env
             .storage()
-            .instance()
+            .persistent()
             .get(&proposal_key)
             .expect("Proposal not found");
 
@@ -235,7 +246,7 @@ impl AdminMultisigContract {
         }
 
         proposal.status = AdminProposalStatus::Rejected;
-        Self::set_instance(&env, &proposal_key, &proposal);
+        Self::set_persistent(&env, &proposal_key, &proposal);
 
         env.events().publish(
             (symbol_short!("proposal"), symbol_short!("canceled")),
@@ -248,14 +259,14 @@ impl AdminMultisigContract {
 
     pub fn get_proposal(env: Env, proposal_id: String) -> AdminProposal {
         env.storage()
-            .instance()
+            .persistent()
             .get(&AdminMultisigDataKey::AdminProposal(proposal_id))
             .expect("Proposal not found")
     }
 
     pub fn is_issuer_removed(env: Env, issuer: Address) -> bool {
         env.storage()
-            .instance()
+            .persistent()
             .get(&AdminMultisigDataKey::RemovedIssuer(issuer))
             .unwrap_or(false)
     }
@@ -305,7 +316,7 @@ impl AdminMultisigContract {
         let proposal_key = AdminMultisigDataKey::AdminProposal(proposal_id.clone());
         let mut proposal: AdminProposal = env
             .storage()
-            .instance()
+            .persistent()
             .get(&proposal_key)
             .expect("Proposal not found");
 
@@ -328,7 +339,7 @@ impl AdminMultisigContract {
                 );
             }
             AdminAction::RemoveIssuer(issuer) => {
-                Self::set_instance(
+                Self::set_persistent(
                     &env,
                     &AdminMultisigDataKey::RemovedIssuer(issuer.clone()),
                     &true,
@@ -362,7 +373,7 @@ impl AdminMultisigContract {
         }
 
         proposal.status = AdminProposalStatus::Executed;
-        Self::set_instance(&env, &proposal_key, &proposal);
+        Self::set_persistent(&env, &proposal_key, &proposal);
         env.events().publish(
             (symbol_short!("proposal"), symbol_short!("executed")),
             proposal_id,
