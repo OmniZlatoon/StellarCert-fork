@@ -311,8 +311,17 @@ impl AdminMultisigContract {
 
         match &proposal.action {
             AdminAction::UpgradeContract(wasm_hash) => {
-                env.deployer()
-                    .update_current_contract_wasm(wasm_hash.clone());
+                let certificate_contract: Address = env
+                    .storage()
+                    .instance()
+                    .get(&AdminMultisigDataKey::CertificateContractId)
+                    .expect("Certificate contract not configured");
+
+                let _: () = env.invoke_contract(
+                    &certificate_contract,
+                    &soroban_sdk::Symbol::new(&env, "upgrade"),
+                    soroban_sdk::vec![&env, wasm_hash.clone().into_val(&env)],
+                );
             }
             AdminAction::RemoveIssuer(issuer) => {
                 Self::set_instance(

@@ -1,8 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
 
 # Build outputs
 dist/
@@ -38,3 +35,7 @@ temp/
 backend/dist
 frontend/dist
 *.tsbuildinfo
+
+# SSL certificates (never commit actual cert files)
+nginx/ssl/cert.pem
+nginx/ssl/key.pem

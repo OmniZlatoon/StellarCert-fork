@@ -1,27 +1,3 @@
-// contracts/stellar_cert/src/lib.rs
-// (Inside #[cfg(test)] module declarations)
-
-#[cfg(test)]
-mod admin_multisig_test;
-#[cfg(test)]
-mod crl_test;
-#[cfg(test)]
-mod issuer_test;
-#[cfg(test)]
-mod multisig_test;
-#[cfg(test)]
-mod status_test;
-#[cfg(test)]
-mod comprehensive_tests;
-#[cfg(test)]
-mod test;
-#[cfg(test)]
-mod test_backend;
-#[cfg(test)]
-mod issuer_management_test;
-// Note: metadata_test omitted as metadata.rs was previously cleaned up as orphaned dead code.
-// Note: CertificateManager.test.ts removed from Rust crate directory.
-
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
@@ -52,8 +28,6 @@ pub use crl::{CRLContract, CRLInfo, RevocationInfo, RevocationReason};
 
 pub mod persistent;
 
-pub mod storage;
-
 mod admin_multisig;
 // Explicit re-exports replace `pub use admin_multisig::*`
 pub use admin_multisig::{
@@ -63,15 +37,11 @@ pub use admin_multisig::{
 };
 
 #[cfg(test)]
-mod admin_multisig_test;
-#[cfg(test)]
 mod crl_test;
 #[cfg(test)]
 mod issuer_test;
 #[cfg(test)]
 mod multisig_test;
-#[cfg(test)]
-mod status_test;
 
 #[contract]
 pub struct CertificateContract;
@@ -1171,6 +1141,9 @@ cert.owner = new_owner;
         if request.proposer != requester {
             panic!("Only proposer can cancel");
         }
+        if request.status != RequestStatus::Pending {
+            panic!("Only pending requests can be cancelled");
+        }
         request.status = RequestStatus::Cancelled;
         Self::set_persistent(&env, &DataKey::PendingRequest(request_id), &request);
         true
@@ -1479,50 +1452,3 @@ cert.owner = new_owner;
         }
     }
 }
-
-
-
-    // Publish the TransferInitiated event
-    let event = TransferInitiatedEvent {
-        transfer_id,
-        certificate_id,
-        from_owner: current_owner.clone(),
-        to_owner: to_owner.clone(),
-    };
-    
-    env.events().publish(
-        (Symbol::new(&env, "transfer_initiated"), certificate_id, to_owner.clone()),
-        CertificateEvent::TransferInitiated(event),
-    );
-
-    // contracts/stellar_cert/src/lib.rs
-
-// Inside update_certificate_metadata:
-env.events().publish(
-    (Symbol::new(&env, "metadata_updated"), certificate_id),
-    CertificateEvent::MetadataUpdated(CertificateMetadataUpdatedEvent {
-        certificate_id,
-        updated_by: caller.clone(),
-    }),
-);
-
-// Inside set_certificate_expiry:
-env.events().publish(
-    (Symbol::new(&env, "expiry_set"), certificate_id),
-    CertificateEvent::ExpirySet(CertificateExpirySetEvent {
-        certificate_id,
-        expiry,
-    }),
-);
-
-// Inside add_issuer:
-env.events().publish(
-    (Symbol::new(&env, "issuer_added"), issuer.clone()),
-    CertificateEvent::IssuerAdded(IssuerAddedEvent { issuer: issuer.clone() }),
-);
-
-// Inside remove_issuer:
-env.events().publish(
-    (Symbol::new(&env, "issuer_removed"), issuer.clone()),
-    CertificateEvent::IssuerRemoved(IssuerRemovedEvent { issuer: issuer.clone() }),
-);

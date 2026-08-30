@@ -265,8 +265,8 @@ const CertificateWallet = () => {
         </div>
       ) : certificates.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-none dark:border dark:border-gray-800">
-          <Wallet className="w-16 h-16 text-gray-400 dark:text-gray-500 dark:text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white text-gray-600 dark:text-gray-300">
+          <Wallet className="w-16 h-16 text-gray-400 dark:text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             No Certificates Yet
           </h2>
           <p className="text-gray-500 dark:text-gray-400 mt-2">

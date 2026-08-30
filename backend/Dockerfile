@@ -20,10 +20,14 @@ WORKDIR /app
 RUN apk add --no-cache python3 g++ make
 
 COPY package*.json ./
-RUN npm install --legacy-peer-deps --omit=dev
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY src/modules/email/templates ./dist/modules/email/templates
+
+# Copy entrypoint — runs migrations then starts the app
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 RUN addgroup -g 1001 -S nodejs \
   && adduser -S nodejs -u 1001 -G nodejs
@@ -31,4 +35,4 @@ USER nodejs
 
 EXPOSE 3000
 
-CMD ["node", "dist/main"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
