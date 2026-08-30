@@ -174,7 +174,10 @@ export async function apiClient<T>(
           statusCode: response.status,
         }));
 
-        if (response.status === 401 && !hasTriedRefresh) {
+        // Never attempt a refresh for the refresh call itself (skipAuth) — that
+        // would recurse into refreshTokens and, with the shared in-flight
+        // promise, deadlock the request against itself.
+        if (response.status === 401 && !hasTriedRefresh && !options.skipAuth) {
           try {
             const refreshResponse = await refreshTokens();
             tokenStorage.setAccessToken(refreshResponse.accessToken);
