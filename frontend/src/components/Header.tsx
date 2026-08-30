@@ -5,6 +5,7 @@ import { Menu, User, X } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../api/types';
+import { canAccessWallet } from '../constants/routeAccess';
 
 type NavItem = {
   label: string;
@@ -18,6 +19,10 @@ export default function Header(): JSX.Element {
 
   const isIssuerOrAdmin =
     user?.role === UserRole.ISSUER || user?.role === UserRole.ADMIN;
+
+  // Gated on the same list the /wallet route guards with, so the link is never
+  // offered to a role the route will bounce straight back to `/`.
+  const showWalletLink = canAccessWallet(user?.role);
 
   useEffect(() => {
     document.body.style.overflow = isDrawerOpen ? 'hidden' : '';
@@ -34,15 +39,12 @@ export default function Header(): JSX.Element {
     { label: 'Verify', to: '/verify' },
     ...(user ? ([{ label: 'Dashboard', to: '/dashboard' }] as NavItem[]) : []),
     ...(isIssuerOrAdmin
-      ? ([
-          { label: 'Issue', to: '/issue' },
-          { label: 'Revoke', to: '/revoke' },
-          { label: 'Wallet', to: '/wallet' },
-          { label: 'Certificates', to: '/certificates' },
-        ] as NavItem[])
-      : user
-        ? ([{ label: 'Wallet', to: '/wallet' }] as NavItem[])
-        : []),
+      ? ([{ label: 'Issue', to: '/issue' }, { label: 'Revoke', to: '/revoke' }] as NavItem[])
+      : []),
+    ...(showWalletLink ? ([{ label: 'Wallet', to: '/wallet' }] as NavItem[]) : []),
+    ...(isIssuerOrAdmin
+      ? ([{ label: 'Certificates', to: '/certificates' }] as NavItem[])
+      : []),
     ...(user
       ? ([
           {

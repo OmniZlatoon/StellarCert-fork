@@ -97,6 +97,11 @@ const CertificateTable = ({ onError, onSuccess }: CertificateTableProps) => {
     const [certHistory, setCertHistory] = useState<ActivityItem[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
+    // Certificate detail modal state. Holds the row's certificate rather than
+    // just its id: the table already has every field the detail view shows, so
+    // opening it needs no second request.
+    const [viewingCertificate, setViewingCertificate] = useState<Certificate | null>(null);
+
     // Fetch certificates
     const fetchCertificates = useCallback(async () => {
         setLoading(true);
@@ -610,8 +615,11 @@ const CertificateTable = ({ onError, onSuccess }: CertificateTableProps) => {
                                                     <History className="w-5 h-5" />
                                                 </button>
                                                 <button
+                                                    type="button"
+                                                    onClick={() => setViewingCertificate(cert)}
                                                     className="p-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
                                                     title="View Certificate"
+                                                    aria-label={`View certificate ${cert.serialNumber}`}
                                                 >
                                                     <FileText className="w-5 h-5" />
                                                 </button>
@@ -885,6 +893,129 @@ const CertificateTable = ({ onError, onSuccess }: CertificateTableProps) => {
                             <button
                                 onClick={() => setShowHistoryModal(false)}
                                 className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-md dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Certificate Detail Modal */}
+            {viewingCertificate && (
+                <div
+                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Certificate details"
+                >
+                    <div className="bg-white dark:bg-slate-900 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-2">
+                                <FileText className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                                <h3 className="text-lg font-semibold dark:text-white">Certificate Details</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setViewingCertificate(null)}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                aria-label="Close certificate details"
+                            >
+                                <XCircle className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Serial Number</dt>
+                                <dd className="mt-1 font-mono text-sm text-gray-900 dark:text-white break-all">
+                                    {viewingCertificate.serialNumber}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Status</dt>
+                                <dd className="mt-1">{getStatusBadge(viewingCertificate.status)}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Recipient</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                                    {viewingCertificate.recipientName}
+                                    {viewingCertificate.recipientEmail && (
+                                        <span className="block text-xs text-gray-500 dark:text-slate-400">
+                                            {viewingCertificate.recipientEmail}
+                                        </span>
+                                    )}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Issuer</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">{viewingCertificate.issuerName}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Title</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">{viewingCertificate.title}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Course</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                                    {viewingCertificate.courseName || '—'}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Issued</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                                    {new Date(viewingCertificate.issueDate).toLocaleDateString()}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Expires</dt>
+                                <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                                    {viewingCertificate.expiryDate
+                                        ? new Date(viewingCertificate.expiryDate).toLocaleDateString()
+                                        : 'No expiry'}
+                                </dd>
+                            </div>
+                            {viewingCertificate.status === 'frozen' && viewingCertificate.freezeReason && (
+                                <div className="sm:col-span-2">
+                                    <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Freeze Reason</dt>
+                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white">
+                                        {viewingCertificate.freezeReason}
+                                    </dd>
+                                </div>
+                            )}
+                            {viewingCertificate.txHash && (
+                                <div className="sm:col-span-2">
+                                    <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Transaction Hash</dt>
+                                    <dd className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">
+                                        {viewingCertificate.txHash}
+                                    </dd>
+                                </div>
+                            )}
+                            {viewingCertificate.cid && (
+                                <div className="sm:col-span-2">
+                                    <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">IPFS CID</dt>
+                                    <dd className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">
+                                        {viewingCertificate.cid}
+                                    </dd>
+                                </div>
+                            )}
+                        </dl>
+
+                        <div className="flex gap-3 mt-6">
+                            {viewingCertificate.pdfUrl && (
+                                <a
+                                    href={viewingCertificate.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-center"
+                                >
+                                    Open Certificate File
+                                </a>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setViewingCertificate(null)}
+                                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-md dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white"
                             >
                                 Close
                             </button>
