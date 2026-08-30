@@ -20,7 +20,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 g++ make
 
 COPY package*.json ./
-RUN npm install --legacy-peer-deps --omit=dev
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY src/modules/email/templates ./dist/modules/email/templates
