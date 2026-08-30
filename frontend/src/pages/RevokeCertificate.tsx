@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { findCertBySerialNumber, revokeCertificate } from '../api';
 import { AlertTriangle, Search, ShieldAlert, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { StatusBadge, isRevocableStatus, getRevocationBlockedMessage } from '../components/StatusBadge';
 import type { Certificate } from '../api';
 interface Message {
   type: 'success' | 'error' | 'warning' | '';
@@ -66,6 +67,9 @@ const RevokeCertificate = () => {
       const result = await findCertBySerialNumber(serialNumber.trim());
       if (result && result.status === 'revoked') {
         setMessage({ type: 'warning', text: 'This certificate has already been revoked.' });
+      } else if (result && !isRevocableStatus(result.status)) {
+        // Block revocation for non-active statuses (expired, frozen, suspended)
+        setMessage({ type: 'warning', text: getRevocationBlockedMessage(result.status) });
       } else if (result) {
         setCertificate({
           id: result.id,
@@ -190,7 +194,7 @@ const RevokeCertificate = () => {
               <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center">2</span>
               Certificate Found
             </h2>
-            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full font-medium">Active</span>
+            <StatusBadge status={certificate.status} />
           </div>
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-6">
