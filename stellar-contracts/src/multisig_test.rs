@@ -520,11 +520,17 @@ fn test_set_certificate_contract_success() {
     env.mock_all_auths();
     let first_certificate_contract = Address::generate(&env);
     client.set_certificate_contract(&first_certificate_contract);
-    assert_eq!(client.get_certificate_contract(), first_certificate_contract);
+    assert_eq!(
+        client.get_certificate_contract(),
+        first_certificate_contract
+    );
 
     let second_certificate_contract = Address::generate(&env);
     client.set_certificate_contract(&second_certificate_contract);
-    assert_eq!(client.get_certificate_contract(), second_certificate_contract);
+    assert_eq!(
+        client.get_certificate_contract(),
+        second_certificate_contract
+    );
 }
 
 #[test]

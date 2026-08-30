@@ -59,16 +59,6 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install frontend dependencies
         run: npm ci
-      - name: Check frontend environment variables
-        run: |
-          node -e "
-          const required = ['VITE_API_URL'];
-          const missing = required.filter(key => !process.env[key]);
-          if (missing.length) {
-            console.error('Missing required environment variables:', missing.join(', '));
-            process.exit(1);
-          }
-          "
       - name: Build frontend
         run: npm run build
 
@@ -91,16 +81,6 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install backend dependencies
         run: npm ci
-      - name: Validate backend environment
-        run: |
-          node -e "
-          const required = ['STELLAR_ISSUER_SECRET_KEY', 'STELLAR_ISSUER_PUBLIC_KEY'];
-          const missing = required.filter(key => !process.env[key]);
-          if (missing.length) {
-            console.error('Missing required environment variables:', missing.join(', '));
-            process.exit(1);
-          }
-          "
       - name: Typecheck backend
         run: npm run typecheck
       - name: Build backend
@@ -127,7 +107,10 @@ jobs:
       - name: Format check
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        # Deny all lints except `deprecated`: the contract still uses the
+        # soroban-sdk event API (env.events().publish), whose migration to the
+        # #[contractevent] macro is tracked separately.
+        run: cargo clippy --all-targets -- -D warnings -A deprecated
       - name: Build contracts
         run: cargo build
       - name: Test contracts

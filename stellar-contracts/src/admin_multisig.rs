@@ -277,7 +277,11 @@ impl AdminMultisigContract {
         Self::approve_action(env, proposal_id, approver)
     }
 
-    pub fn set_admin_certificate_contract(env: Env, signer: Address, certificate_contract: Address) {
+    pub fn set_admin_certificate_contract(
+        env: Env,
+        signer: Address,
+        certificate_contract: Address,
+    ) {
         signer.require_auth();
 
         let config = Self::get_config(env.clone());

@@ -255,7 +255,6 @@ pub struct CertPaginatedResult {
     pub has_next: bool,
 }
 
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransferInitiatedEvent {

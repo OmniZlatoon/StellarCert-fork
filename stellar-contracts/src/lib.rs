@@ -6,13 +6,12 @@ use soroban_sdk::{
 mod types;
 // Explicit re-exports replace `pub use types::*` to avoid ambiguous_glob_reexports
 pub use types::{
-    Certificate, CertPaginatedResult, CertificateIssuedEvent, CertificateReinstatedEvent,
-    CertificateRevokedEvent, CertificateStatus, CertificateSuspendedEvent,
-    CertificateTransfer, CertificateUnfrozenEvent, CertificateFrozenEvent,
-    CertificateVersion, ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus,
-    PaginatedResult, Pagination, PendingRequest, RequestStatus, SignatureResult,
-    TransferAcceptedEvent, TransferCompletedEvent, TransferHistoryEntry, TransferStatus,
-    VerificationReport, VerificationResult,
+    CertPaginatedResult, Certificate, CertificateFrozenEvent, CertificateIssuedEvent,
+    CertificateReinstatedEvent, CertificateRevokedEvent, CertificateStatus,
+    CertificateSuspendedEvent, CertificateTransfer, CertificateUnfrozenEvent, CertificateVersion,
+    ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus, PaginatedResult, Pagination,
+    PendingRequest, RequestStatus, SignatureResult, TransferAcceptedEvent, TransferCompletedEvent,
+    TransferHistoryEntry, TransferStatus, VerificationReport, VerificationResult,
 };
 
 // mod metadata;
@@ -31,9 +30,8 @@ pub mod persistent;
 mod admin_multisig;
 // Explicit re-exports replace `pub use admin_multisig::*`
 pub use admin_multisig::{
-    AdminAction, AdminMultisigConfig, AdminMultisigContract, AdminMultisigDataKey,
-    AdminProposal, AdminProposalStatus, ProposalApprovedEvent, ProposalCanceledEvent,
-    ProposalCreatedEvent,
+    AdminAction, AdminMultisigConfig, AdminMultisigContract, AdminMultisigDataKey, AdminProposal,
+    AdminProposalStatus, ProposalApprovedEvent, ProposalCanceledEvent, ProposalCreatedEvent,
 };
 
 #[cfg(test)]
@@ -613,31 +611,31 @@ impl CertificateContract {
             panic!("Transfer must be accepted before completion");
         }
 
-         let mut cert: Certificate = env
-    .storage()
-    .persistent()
-    .get(&DataKey::Certificate(transfer.certificate_id.clone()))
-    .expect("Certificate not found");
+        let mut cert: Certificate = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Certificate(transfer.certificate_id.clone()))
+            .expect("Certificate not found");
 
-let previous_owner = cert.owner.clone();
-let new_owner = transfer.to_owner.clone();
+        let previous_owner = cert.owner.clone();
+        let new_owner = transfer.to_owner.clone();
 
-// Remove certificate from old owner's index
-Self::remove_cert_id(
-    &env,
-    DataKey::OwnerCertIds(previous_owner),
-    transfer.certificate_id.clone(),
-);
+        // Remove certificate from old owner's index
+        Self::remove_cert_id(
+            &env,
+            DataKey::OwnerCertIds(previous_owner),
+            transfer.certificate_id.clone(),
+        );
 
-// Add certificate to new owner's index
-Self::append_cert_id(
-    &env,
-    DataKey::OwnerCertIds(new_owner.clone()),
-    transfer.certificate_id.clone(),
-);
+        // Add certificate to new owner's index
+        Self::append_cert_id(
+            &env,
+            DataKey::OwnerCertIds(new_owner.clone()),
+            transfer.certificate_id.clone(),
+        );
 
-// Update certificate ownership
-cert.owner = new_owner;
+        // Update certificate ownership
+        cert.owner = new_owner;
 
         // Revoke if required
         if transfer.require_revocation {
@@ -1091,7 +1089,7 @@ cert.owner = new_owner;
                 .storage()
                 .persistent()
                 .get::<_, MultisigConfig>(&DataKey::MultisigConfig(request.issuer.clone()))
-                .map_or(false, |c| c.signers.contains(&caller));
+                .is_some_and(|c| c.signers.contains(&caller));
         if !is_authorized {
             panic!("Not authorized to view this request");
         }
@@ -1206,7 +1204,7 @@ cert.owner = new_owner;
             {
                 let is_expired_by_time = cert
                     .expires_at
-                    .map_or(false, |exp| env.ledger().timestamp() >= exp);
+                    .is_some_and(|exp| env.ledger().timestamp() >= exp);
 
                 let is_revoked = cert.status == CertificateStatus::Revoked
                     || cert.status == CertificateStatus::Suspended
@@ -1363,24 +1361,24 @@ cert.owner = new_owner;
             Self::set_persistent(env, &key, &ids);
         }
     }
-    
+
     fn remove_cert_id(env: &Env, key: DataKey, cert_id: String) {
-    let ids: Vec<String> = env
-        .storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or(Vec::<String>::new(env));
+        let ids: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::<String>::new(env));
 
-    let mut updated = Vec::<String>::new(env);
+        let mut updated = Vec::<String>::new(env);
 
-    for id in ids.iter() {
-        if id != cert_id {
-            updated.push_back(id);
+        for id in ids.iter() {
+            if id != cert_id {
+                updated.push_back(id);
+            }
         }
-    }
 
-    Self::set_persistent(env, &key, &updated);
-}
+        Self::set_persistent(env, &key, &updated);
+    }
 
     fn append_request_id(env: &Env, key: DataKey, request_id: String) {
         let mut request_ids = Self::get_request_ids(env, key.clone());
