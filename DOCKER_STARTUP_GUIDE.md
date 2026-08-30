@@ -27,7 +27,7 @@ Once all services are running, you can access:
 
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:3000
-- **Health Check**: http://localhost:3000/health
+- **Health Check**: http://localhost:3000/api/v1/health
 - **Metrics**: http://localhost:3000/metrics (if enabled)
 
 ## Optional Services
@@ -225,7 +225,7 @@ Each service has built-in health checks:
 
 - **PostgreSQL**: Checks database connectivity
 - **Redis**: Pings the Redis server
-- **Backend**: Checks `/health` endpoint
+- **Backend**: Checks `/api/v1/health` endpoint
 - **Frontend**: Checks if the web server is responding
 
 Services will only start after their dependencies are healthy.
