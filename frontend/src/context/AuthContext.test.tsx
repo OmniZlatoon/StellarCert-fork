@@ -1,9 +1,15 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
 import { tokenStorage, notifyTokenRefreshed } from '../api/tokens';
 import { User, UserRole } from '../api/types';
+
+vi.mock('../api/endpoints', () => ({
+  authApi: {
+    refresh: vi.fn().mockRejectedValue(new Error('No refresh cookie')),
+  },
+}));
 
 /** Build a JWT-shaped token whose `exp` is `offsetSec` from now. */
 const makeToken = (offsetSec: number): string => {
@@ -39,13 +45,18 @@ const renderAuth = () =>
   );
 
 beforeEach(() => {
-  localStorage.clear();
+  tokenStorage.clearTokens();
 });
 
 describe('AuthContext silent token refresh (#560)', () => {
-  it('flips isAuthenticated to true and sets the user after a silent refresh', () => {
+  it('flips isAuthenticated to true and sets the user after a silent refresh', async () => {
     // Start unauthenticated (no token, no user).
     renderAuth();
+
+    await act(async () => {
+      // Allow initial rehydration promise to resolve
+    });
+
     expect(screen.getByTestId('auth').textContent).toBe('false');
     expect(screen.getByTestId('user').textContent).toBe('none');
 
@@ -60,11 +71,17 @@ describe('AuthContext silent token refresh (#560)', () => {
     expect(screen.getByTestId('user').textContent).toBe('alice@example.com');
   });
 
-  it('updates the user object from the refresh response', () => {
-    localStorage.setItem('user', JSON.stringify(sampleUser));
+  it('updates the user object from the refresh response', async () => {
     tokenStorage.setAccessToken(makeToken(3600));
 
     renderAuth();
+
+    await act(async () => {});
+
+    act(() => {
+      notifyTokenRefreshed(makeToken(3600), sampleUser);
+    });
+
     expect(screen.getByTestId('user').textContent).toBe('alice@example.com');
 
     const updated: User = { ...sampleUser, email: 'alice.new@example.com' };
@@ -77,24 +94,26 @@ describe('AuthContext silent token refresh (#560)', () => {
     expect(screen.getByTestId('auth').textContent).toBe('true');
   });
 
-  it('keeps isAuthenticated true when a refresh carries no user (token only)', () => {
-    localStorage.setItem('user', JSON.stringify(sampleUser));
+  it('keeps isAuthenticated false when a refresh carries no user', async () => {
     tokenStorage.setAccessToken(makeToken(-100)); // expired going in
 
     renderAuth();
-    // Mount cleared the expired token, so we are unauthenticated.
+
+    await act(async () => {});
+
     expect(screen.getByTestId('auth').textContent).toBe('false');
 
-    // A refresh without a user should still re-authenticate if a user exists...
-    // here there is no user (it was cleared), so it stays false but does not throw.
     act(() => {
       notifyTokenRefreshed(makeToken(3600));
     });
     expect(screen.getByTestId('auth').textContent).toBe('false');
   });
 
-  it('ignores a refreshed token that is already expired', () => {
+  it('ignores a refreshed token that is already expired', async () => {
     renderAuth();
+
+    await act(async () => {});
+
     act(() => {
       notifyTokenRefreshed(makeToken(-100), sampleUser);
     });
