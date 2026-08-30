@@ -232,27 +232,27 @@ const CertificateWallet = () => {
   const getStatusBadgeClass = (status: Certificate["status"]) => {
     switch (status) {
       case "active":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "revoked":
-        return "bg-red-100 text-red-800";
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
       case "expired":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
       case "frozen":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
     }
   };
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
-        <Wallet className="w-10 h-10 text-blue-600" />
-        <h1 className="text-3xl font-bold">Certificate Wallet</h1>
+        <Wallet className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Certificate Wallet</h1>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 text-red-700">
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3 text-red-700 dark:text-red-400">
           <AlertCircle className="w-5 h-5 mt-0.5" />
           <p>{error}</p>
         </div>
@@ -261,15 +261,15 @@ const CertificateWallet = () => {
       {loading ? (
         <div className="text-center py-12">
           <div className="animate-spin h-12 w-12 border-b-2 border-blue-600 rounded-full mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading certificates...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-300">Loading certificates...</p>
         </div>
       ) : certificates.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg shadow-md">
-          <Wallet className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-600">
+        <div className="text-center py-12 bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-none dark:border dark:border-gray-800">
+          <Wallet className="w-16 h-16 text-gray-400 dark:text-gray-500 dark:text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white text-gray-600 dark:text-gray-300">
             No Certificates Yet
           </h2>
-          <p className="text-gray-500 mt-2">
+          <p className="text-gray-500 dark:text-gray-400 mt-2">
             Your earned certificates will appear here
           </p>
         </div>
@@ -277,9 +277,9 @@ const CertificateWallet = () => {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {paginatedCertificates.map((cert) => (
-              <div key={cert.id} className="bg-white rounded-lg shadow-md p-6">
+              <div key={cert.id} className="bg-white dark:bg-gray-900 rounded-lg shadow-md dark:shadow-none dark:border dark:border-gray-800 p-6">
                 <div className="flex justify-between mb-4">
-                  <h3 className="text-xl font-semibold">{cert.title}</h3>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{cert.title}</h3>
                   <span
                     className={`px-2 py-1 text-sm rounded ${getStatusBadgeClass(
                       cert.status,
@@ -289,7 +289,7 @@ const CertificateWallet = () => {
                   </span>
                 </div>
 
-                <div className="mb-6 space-y-2 text-gray-600">
+                <div className="mb-6 space-y-2 text-gray-600 dark:text-gray-300">
                   <p>Issued to: {cert.recipientName}</p>
                   <p className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
@@ -301,7 +301,7 @@ const CertificateWallet = () => {
                   <button
                     onClick={() => handlePdfAction(cert, "view")}
                     disabled={actionLoadingId === cert.id}
-                    className="flex items-center gap-2 text-blue-600 disabled:opacity-50"
+                    className="flex items-center gap-2 text-blue-600 dark:text-blue-400 disabled:opacity-50"
                   >
                     <Eye className="w-4 h-4" />
                     View
@@ -310,10 +310,10 @@ const CertificateWallet = () => {
                   <button
                     onClick={() => handleShowQR(cert.id)}
                     disabled={loadingQR[cert.id]}
-                    className="flex items-center gap-2 text-purple-600 disabled:opacity-50"
+                    className="flex items-center gap-2 text-purple-600 dark:text-purple-400 disabled:opacity-50"
                   >
                     {loadingQR[cert.id] ? (
-                      <div className="animate-spin h-4 w-4 border-b-2 border-purple-600 rounded-full"></div>
+                      <div className="animate-spin h-4 w-4 border-b-2 border-purple-600 dark:border-purple-400 rounded-full"></div>
                     ) : (
                       <QrCode className="w-4 h-4" />
                     )}
@@ -323,7 +323,7 @@ const CertificateWallet = () => {
                   <button
                     onClick={() => handlePdfAction(cert, "download")}
                     disabled={actionLoadingId === cert.id}
-                    className="flex items-center gap-2 text-green-600 disabled:opacity-50"
+                    className="flex items-center gap-2 text-green-600 dark:text-green-400 disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
                     Download
@@ -331,7 +331,7 @@ const CertificateWallet = () => {
 
                   <button
                     onClick={() => handleShare(cert)}
-                    className="flex items-center gap-2 text-indigo-600"
+                    className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400"
                   >
                     {copiedId === cert.id ? (
                       <Check className="w-4 h-4" />
@@ -345,9 +345,9 @@ const CertificateWallet = () => {
             ))}
           </div>
 
-          <div className="mt-6 px-2 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-gray-200">
+          <div className="mt-6 px-2 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
                 Showing {(page - 1) * limit + 1} to{" "}
                 {Math.min(page * limit, total)} of {total} results
               </span>
@@ -357,7 +357,7 @@ const CertificateWallet = () => {
                   setLimit(Number(e.target.value));
                   setPage(1);
                 }}
-                className="ml-2 px-2 py-1 text-sm border border-gray-300 rounded-md"
+                className="ml-2 px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800 dark:text-gray-200"
                 aria-label="Certificates per page"
               >
                 <option value={6}>6</option>
@@ -371,12 +371,12 @@ const CertificateWallet = () => {
               <button
                 onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 disabled={page === 1}
-                className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Previous page"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <span className="px-4 py-2 text-sm text-gray-700">
+              <span className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                 Page {page} of {totalPages}
               </span>
               <button
@@ -384,7 +384,7 @@ const CertificateWallet = () => {
                   setPage((prev) => Math.min(totalPages, prev + 1))
                 }
                 disabled={page === totalPages}
-                className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Next page"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -397,19 +397,19 @@ const CertificateWallet = () => {
       {/* ✅ QR MODAL */}
       {selectedQR && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50"
           role="dialog"
           aria-modal="true"
           aria-label="Certificate QR code"
         >
-          <div className="bg-white p-6 rounded-lg max-w-sm w-full">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg max-w-sm w-full dark:border dark:border-gray-800">
             <div className="flex justify-between mb-4">
-              <h3 className="font-semibold">Certificate QR Code</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Certificate QR Code</h3>
               <button
                 onClick={() => setSelectedQR(null)}
                 aria-label="Close QR modal"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" />
               </button>
             </div>
 
@@ -420,7 +420,7 @@ const CertificateWallet = () => {
               aria-label="Certificate QR code for verification"
               className="mx-auto max-h-[300px]"
             />
-            <p className="text-sm text-gray-600 text-center mt-4">
+            <p className="text-sm text-gray-600 dark:text-gray-300 text-center mt-4">
               Scan to verify certificate
             </p>
           </div>

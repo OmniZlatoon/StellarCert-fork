@@ -109,4 +109,25 @@ describe("CertificateWallet", () => {
       screen.getByText(/Blockchain Fundamentals/i),
     ).toBeInTheDocument();
   });
+
+  // ── Dark mode fix (#795) ────────────────────────────────────────────────
+  it("renders with correct dark mode classes", async () => {
+    mockedGetUserCertificates.mockResolvedValueOnce([MOCK_CERT]);
+
+    render(<CertificateWallet />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Blockchain Fundamentals/i)).toBeInTheDocument()
+    );
+
+    const card = screen.getByText(/Blockchain Fundamentals/i).closest('.bg-white');
+    expect(card).toHaveClass('dark:bg-gray-900');
+    
+    const title = screen.getByText(/Blockchain Fundamentals/i);
+    expect(title).toHaveClass('dark:text-white');
+
+    const statusBadge = screen.getByText('active');
+    expect(statusBadge).toHaveClass('dark:bg-green-900/30');
+    expect(statusBadge).toHaveClass('dark:text-green-400');
+  });
 });
