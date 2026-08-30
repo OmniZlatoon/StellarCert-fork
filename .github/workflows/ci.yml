@@ -59,6 +59,8 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install frontend dependencies
         run: npm ci
+      - name: Typecheck frontend
+        run: npm run typecheck
       - name: Build frontend
         run: npm run build
 
@@ -78,7 +80,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: backend/package-lock.json
       - name: Install backend dependencies
         run: npm ci
       - name: Typecheck backend
