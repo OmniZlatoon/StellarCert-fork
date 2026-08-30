@@ -488,13 +488,32 @@ impl CertificateContract {
         // Store new certificate
         Self::set_persistent(&env, &DataKey::Certificate(new_id.clone()), &new_cert);
 
-        // Emit issuance event
+        // Index the new certificate by issuer and owner
+        Self::append_cert_id(&env, DataKey::IssuerCertIds(issuer.clone()), new_id.clone());
+        Self::append_cert_id(&env, DataKey::OwnerCertIds(new_cert.owner.clone()), new_id.clone());
+
+        // Mark original certificate as revoked (superseded)
+        let mut updated_original = original_cert;
+        updated_original.status = CertificateStatus::Revoked;
+        updated_original.revocation_reason = Some(String::from_str(&env, "Superseded"));
+        Self::set_persistent(&env, &DataKey::Certificate(old_id.clone()), &updated_original);
+
+        // Emit issuance event for new certificate
         env.events().publish(
             (symbol_short!("issued"), new_id.clone()),
             CertificateIssuedEvent {
                 id: new_id,
-                issuer,
+                issuer: issuer.clone(),
                 owner: new_cert.owner,
+            },
+        );
+
+        // Emit revocation event for original certificate
+        env.events().publish(
+            (symbol_short!("revoked"), old_id.clone()),
+            CertificateRevokedEvent {
+                id: old_id,
+                reason: String::from_str(&env, "Superseded"),
             },
         );
     }
