@@ -250,11 +250,12 @@ export class CertificateTransferService {
   async rejectTransfer(
     transferId: string,
     rejectionReason: string,
-    rejectorId: string,
+    rejector: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
       where: { id: transferId },
+      relations: ['certificate'],
     });
 
     if (!transfer) {
@@ -264,6 +265,17 @@ export class CertificateTransferService {
     if (transfer.status !== TransferStatus.PENDING) {
       throw new ConflictException(
         `Transfer is not pending. Current status: ${transfer.status}`,
+      );
+    }
+
+    // Allow rejection if user is the initiator, the certificate's issuer, or an admin
+    if (
+      transfer.initiatedBy !== rejector.id &&
+      transfer.certificate.issuerId !== rejector.id &&
+      rejector.role !== UserRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only the transfer initiator, the certificate issuer, or an admin can reject this transfer request',
       );
     }
 
@@ -277,7 +289,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId: rejectorId,
+      userId: rejector.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
