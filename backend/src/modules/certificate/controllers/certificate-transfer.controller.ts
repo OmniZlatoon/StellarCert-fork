@@ -87,10 +87,10 @@ export class CertificateTransferController {
   @ApiResponse({ status: 200, description: 'Transfer cancelled successfully' })
   async cancelTransfer(
     @Param('id') transferId: string,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: any,
     @Req() req: any,
   ) {
-    return this.transferService.cancelTransfer(transferId, userId, req.ip);
+    return this.transferService.cancelTransfer(transferId, user, req.ip);
   }
 
   @Get('certificate/:certificateId/history')

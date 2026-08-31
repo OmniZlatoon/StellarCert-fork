@@ -46,7 +46,6 @@ export class CertificateTransferService {
     }
 
     // Verify that only the certificate's issuer or an admin can initiate a transfer
-    const UserRole = { ADMIN: 'admin', ISSUER: 'issuer' };
     if (initiator.role !== UserRole.ADMIN && certificate.issuerId !== initiator.id) {
       throw new ForbiddenException(
         'You are not authorized to initiate a transfer for this certificate. Only the certificate issuer or an admin can perform this action.',
