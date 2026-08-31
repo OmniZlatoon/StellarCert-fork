@@ -40,10 +40,10 @@ export class CertificateTransferController {
   @ApiResponse({ status: 409, description: 'Transfer conflict' })
   async initiateTransfer(
     @Body() dto: InitiateTransferDto,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: any,
     @Req() req: any,
   ) {
-    return this.transferService.initiateTransfer(dto, userId, req.ip);
+    return this.transferService.initiateTransfer(dto, user, req.ip);
   }
 
   @Post('approve')
