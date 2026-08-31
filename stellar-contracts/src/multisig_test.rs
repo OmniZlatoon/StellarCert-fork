@@ -214,6 +214,7 @@ fn test_issue_approved_certificate() {
     let signers = vec![&env, signer1.clone(), signer2.clone()];
 
     env.mock_all_auths();
+    client.initialize(&admin);
     client.init_multisig_config(&issuer, &2, &signers, &5, &admin);
 
     let request_id = String::from_str(&env, "req-005");
@@ -231,7 +232,7 @@ fn test_issue_approved_certificate() {
     let certificate_client = CertificateContractClient::new(&env, &certificate_contract_id);
     certificate_client.initialize(&admin);
     certificate_client.add_issuer(&issuer);
-    client.set_certificate_contract(&admin, &certificate_contract_address);
+    client.set_certificate_contract(&certificate_contract_address);
 
     // Issue the certificate
     let success = client.issue_approved_certificate(&request_id);
@@ -481,4 +482,77 @@ fn test_get_pending_requests_for_signer_returns_only_pending_requests() {
         .data
         .iter()
         .all(|request| request.status == RequestStatus::Pending));
+}
+
+#[test]
+fn test_initialize_stores_admin() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MultisigCertificateContract);
+    let client = MultisigCertificateContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    assert_eq!(client.get_admin(), admin);
+}
+
+#[test]
+#[should_panic(expected = "Admin already initialized")]
+fn test_initialize_rejects_second_call() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MultisigCertificateContract);
+    let client = MultisigCertificateContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    client.initialize(&Address::generate(&env));
+}
+
+#[test]
+fn test_set_certificate_contract_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MultisigCertificateContract);
+    let client = MultisigCertificateContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    env.mock_all_auths();
+    let first_certificate_contract = Address::generate(&env);
+    client.set_certificate_contract(&first_certificate_contract);
+    assert_eq!(
+        client.get_certificate_contract(),
+        first_certificate_contract
+    );
+
+    let second_certificate_contract = Address::generate(&env);
+    client.set_certificate_contract(&second_certificate_contract);
+    assert_eq!(
+        client.get_certificate_contract(),
+        second_certificate_contract
+    );
+}
+
+#[test]
+#[should_panic(expected = "Contract not initialized")]
+fn test_set_certificate_contract_rejects_uninitialized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MultisigCertificateContract);
+    let client = MultisigCertificateContractClient::new(&env, &contract_id);
+
+    client.set_certificate_contract(&Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_set_certificate_contract_rejects_missing_admin_auth() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, MultisigCertificateContract);
+    let client = MultisigCertificateContractClient::new(&env, &contract_id);
+
+    // Do NOT invoke mock_all_auths() — a random caller must not be able to
+    // authorize the stored admin and hijack the certificate contract pointer.
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    client.set_certificate_contract(&Address::generate(&env));
 }

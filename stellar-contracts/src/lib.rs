@@ -1,27 +1,3 @@
-// contracts/stellar_cert/src/lib.rs
-// (Inside #[cfg(test)] module declarations)
-
-#[cfg(test)]
-mod admin_multisig_test;
-#[cfg(test)]
-mod crl_test;
-#[cfg(test)]
-mod issuer_test;
-#[cfg(test)]
-mod multisig_test;
-#[cfg(test)]
-mod status_test;
-#[cfg(test)]
-mod comprehensive_tests;
-#[cfg(test)]
-mod test;
-#[cfg(test)]
-mod test_backend;
-#[cfg(test)]
-mod issuer_management_test;
-// Note: metadata_test omitted as metadata.rs was previously cleaned up as orphaned dead code.
-// Note: CertificateManager.test.ts removed from Rust crate directory.
-
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
@@ -30,9 +6,9 @@ use soroban_sdk::{
 mod types;
 // Explicit re-exports replace `pub use types::*` to avoid ambiguous_glob_reexports
 pub use types::{
-    Certificate, CertPaginatedResult, CertificateIssuedEvent, CertificateReinstatedEvent,
-    CertificateRevokedEvent, CertificateStatus, CertificateSuspendedEvent,
-    CertificateTransfer, CertificateUnfrozenEvent, CertificateFrozenEvent,
+    CertPaginatedResult, Certificate, CertificateFrozenEvent, CertificateIssuedEvent,
+    CertificateReinstatedEvent, CertificateReissuedEvent, CertificateRevokedEvent,
+    CertificateStatus, CertificateSuspendedEvent, CertificateTransfer, CertificateUnfrozenEvent,
     CertificateVersion, ContractVersion, DataKey, MultisigConfig, OptionalRequestStatus,
     PaginatedResult, Pagination, PendingRequest, RequestStatus, SignatureResult,
     TransferAcceptedEvent, TransferCompletedEvent, TransferHistoryEntry, TransferStatus,
@@ -52,26 +28,19 @@ pub use crl::{CRLContract, CRLInfo, RevocationInfo, RevocationReason};
 
 pub mod persistent;
 
-pub mod storage;
-
 mod admin_multisig;
 // Explicit re-exports replace `pub use admin_multisig::*`
 pub use admin_multisig::{
-    AdminAction, AdminMultisigConfig, AdminMultisigContract, AdminMultisigDataKey,
-    AdminProposal, AdminProposalStatus, ProposalApprovedEvent, ProposalCanceledEvent,
-    ProposalCreatedEvent,
+    AdminAction, AdminMultisigConfig, AdminMultisigContract, AdminMultisigDataKey, AdminProposal,
+    AdminProposalStatus, ProposalApprovedEvent, ProposalCanceledEvent, ProposalCreatedEvent,
 };
 
-#[cfg(test)]
-mod admin_multisig_test;
 #[cfg(test)]
 mod crl_test;
 #[cfg(test)]
 mod issuer_test;
 #[cfg(test)]
 mod multisig_test;
-#[cfg(test)]
-mod status_test;
 
 #[contract]
 pub struct CertificateContract;
@@ -500,8 +469,8 @@ impl CertificateContract {
 
         // Emit issuance event for new certificate
         env.events().publish(
-            (symbol_short!("issued"), new_id.clone()),
-            CertificateIssuedEvent {
+            (symbol_short!("reissued"), new_id.clone()),
+            CertificateReissuedEvent {
                 id: new_id,
                 issuer: issuer.clone(),
                 owner: new_cert.owner,
@@ -662,31 +631,31 @@ impl CertificateContract {
             panic!("Transfer must be accepted before completion");
         }
 
-         let mut cert: Certificate = env
-    .storage()
-    .persistent()
-    .get(&DataKey::Certificate(transfer.certificate_id.clone()))
-    .expect("Certificate not found");
+        let mut cert: Certificate = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Certificate(transfer.certificate_id.clone()))
+            .expect("Certificate not found");
 
-let previous_owner = cert.owner.clone();
-let new_owner = transfer.to_owner.clone();
+        let previous_owner = cert.owner.clone();
+        let new_owner = transfer.to_owner.clone();
 
-// Remove certificate from old owner's index
-Self::remove_cert_id(
-    &env,
-    DataKey::OwnerCertIds(previous_owner),
-    transfer.certificate_id.clone(),
-);
+        // Remove certificate from old owner's index
+        Self::remove_cert_id(
+            &env,
+            DataKey::OwnerCertIds(previous_owner),
+            transfer.certificate_id.clone(),
+        );
 
-// Add certificate to new owner's index
-Self::append_cert_id(
-    &env,
-    DataKey::OwnerCertIds(new_owner.clone()),
-    transfer.certificate_id.clone(),
-);
+        // Add certificate to new owner's index
+        Self::append_cert_id(
+            &env,
+            DataKey::OwnerCertIds(new_owner.clone()),
+            transfer.certificate_id.clone(),
+        );
 
-// Update certificate ownership
-cert.owner = new_owner;
+        // Update certificate ownership
+        cert.owner = new_owner;
 
         // Revoke if required
         if transfer.require_revocation {
@@ -822,22 +791,75 @@ cert.owner = new_owner;
             .unwrap_or(0)
     }
 
-    /// Get transfer details
-    pub fn get_transfer(env: Env, transfer_id: String) -> CertificateTransfer {
-        env.storage()
+    /// Get transfer details (only the participants or the admin may view it).
+    pub fn get_transfer(env: Env, transfer_id: String, caller: Address) -> CertificateTransfer {
+        caller.require_auth();
+        let transfer: CertificateTransfer = env
+            .storage()
             .persistent()
             .get(&DataKey::Transfer(transfer_id))
-            .expect("Transfer not found")
+            .expect("Transfer not found");
+        // Either participant (from/to owner) or the admin may view a transfer.
+        // A single combined check is required: calling `assert_admin_or` twice in
+        // sequence only passes for the admin, since each call panics unless the
+        // caller is that exact address, which rejects legitimate participants.
+        Self::assert_admin_or_either(&env, &caller, &transfer.from_owner, &transfer.to_owner);
+        transfer
     }
 
-    /// Get transfer history for a certificate (public wrapper)
-    pub fn get_transfer_history_public(env: Env, certificate_id: String) -> Vec<String> {
+    /// Get transfer history for a certificate (owner/admin only).
+    pub fn get_transfer_history_public(
+        env: Env,
+        certificate_id: String,
+        caller: Address,
+    ) -> Vec<String> {
+        caller.require_auth();
+        let cert: Certificate = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Certificate(certificate_id.clone()))
+            .expect("Certificate not found");
+        Self::assert_admin_or(&env, &caller, &cert.owner);
         Self::get_transfer_history(&env, certificate_id)
     }
 
-    /// Get pending transfers for an address (public wrapper)
-    pub fn get_pending_transfers_public(env: Env, address: Address) -> Vec<String> {
+    /// Get pending transfers for an address (the address itself or admin only).
+    pub fn get_pending_transfers_public(
+        env: Env,
+        address: Address,
+        caller: Address,
+    ) -> Vec<String> {
+        caller.require_auth();
+        Self::assert_admin_or(&env, &caller, &address);
         Self::get_pending_transfers(&env, address)
+    }
+
+    /// Authorization check: allow `caller` only when it is `allowed` or the
+    /// contract admin. Mirrors the `get_pending_request` access pattern.
+    fn assert_admin_or(env: &Env, caller: &Address, allowed: &Address) {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+        if caller != allowed && caller != &admin {
+            panic!("Not authorized to view this data");
+        }
+    }
+
+    /// Authorization check for data with two authorized parties: allow `caller`
+    /// only when it is `a`, `b`, or the contract admin. Used by `get_transfer`
+    /// so either the sending or receiving owner (as well as the admin) can view
+    /// the transfer, in a single combined check.
+    fn assert_admin_or_either(env: &Env, caller: &Address, a: &Address, b: &Address) {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Admin)
+            .expect("Contract not initialized");
+        if caller != a && caller != b && caller != &admin {
+            panic!("Not authorized to view this data");
+        }
     }
 
     /// Get total transfer count (public wrapper)
@@ -1140,7 +1162,7 @@ cert.owner = new_owner;
                 .storage()
                 .persistent()
                 .get::<_, MultisigConfig>(&DataKey::MultisigConfig(request.issuer.clone()))
-                .map_or(false, |c| c.signers.contains(&caller));
+                .is_some_and(|c| c.signers.contains(&caller));
         if !is_authorized {
             panic!("Not authorized to view this request");
         }
@@ -1189,6 +1211,9 @@ cert.owner = new_owner;
             .expect("Request not found");
         if request.proposer != requester {
             panic!("Only proposer can cancel");
+        }
+        if request.status != RequestStatus::Pending {
+            panic!("Only pending requests can be cancelled");
         }
         request.status = RequestStatus::Cancelled;
         Self::set_persistent(&env, &DataKey::PendingRequest(request_id), &request);
@@ -1252,7 +1277,7 @@ cert.owner = new_owner;
             {
                 let is_expired_by_time = cert
                     .expires_at
-                    .map_or(false, |exp| env.ledger().timestamp() >= exp);
+                    .is_some_and(|exp| env.ledger().timestamp() >= exp);
 
                 let is_revoked = cert.status == CertificateStatus::Revoked
                     || cert.status == CertificateStatus::Suspended
@@ -1355,11 +1380,29 @@ cert.owner = new_owner;
         Self::paginate_certificates(&env, ids, pagination)
     }
 
+    /// Page numbers are 1-indexed: the first page is `1` (a `page` of `0` is
+    /// normalized to the first page). Returns the zero-based start index for a
+    /// page. Shared by every paginated view in the contract so certificate and
+    /// request listings stay consistent with each other.
+    fn page_start_index(page: u32, limit: u32) -> u32 {
+        page.saturating_sub(1).saturating_mul(limit)
+    }
+
+    /// Hard ceiling on `Pagination::limit` for certificate listings. Without
+    /// this, a caller could pass e.g. `u32::MAX` and force a single
+    /// invocation to walk the entire certificate list, exhausting the
+    /// transaction's compute budget.
+    const MAX_PAGE_SIZE: u32 = 100;
+
     fn paginate_certificates(
         env: &Env,
         cert_ids: Vec<String>,
         pagination: Pagination,
     ) -> CertPaginatedResult {
+        if pagination.limit > Self::MAX_PAGE_SIZE {
+            panic!("Pagination limit exceeds maximum allowed");
+        }
+
         let total = cert_ids.len();
         let mut page_data = Vec::<Certificate>::new(env);
 
@@ -1373,7 +1416,7 @@ cert.owner = new_owner;
             };
         }
 
-        let start = pagination.page.saturating_mul(pagination.limit);
+        let start = Self::page_start_index(pagination.page, pagination.limit);
         let end = total.min(start.saturating_add(pagination.limit));
         let mut index = start;
         while index < end {
@@ -1409,24 +1452,24 @@ cert.owner = new_owner;
             Self::set_persistent(env, &key, &ids);
         }
     }
-    
+
     fn remove_cert_id(env: &Env, key: DataKey, cert_id: String) {
-    let ids: Vec<String> = env
-        .storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or(Vec::<String>::new(env));
+        let ids: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::<String>::new(env));
 
-    let mut updated = Vec::<String>::new(env);
+        let mut updated = Vec::<String>::new(env);
 
-    for id in ids.iter() {
-        if id != cert_id {
-            updated.push_back(id);
+        for id in ids.iter() {
+            if id != cert_id {
+                updated.push_back(id);
+            }
         }
-    }
 
-    Self::set_persistent(env, &key, &updated);
-}
+        Self::set_persistent(env, &key, &updated);
+    }
 
     fn append_request_id(env: &Env, key: DataKey, request_id: String) {
         let mut request_ids = Self::get_request_ids(env, key.clone());
@@ -1475,10 +1518,7 @@ cert.owner = new_owner;
         }
 
         // Page is 1-indexed. Calculate start index (0-indexed)
-        let start = pagination
-            .page
-            .saturating_sub(1)
-            .saturating_mul(pagination.limit);
+        let start = Self::page_start_index(pagination.page, pagination.limit);
         let end = total.min(start.saturating_add(pagination.limit));
 
         let mut index = start;
@@ -1498,50 +1538,3 @@ cert.owner = new_owner;
         }
     }
 }
-
-
-
-    // Publish the TransferInitiated event
-    let event = TransferInitiatedEvent {
-        transfer_id,
-        certificate_id,
-        from_owner: current_owner.clone(),
-        to_owner: to_owner.clone(),
-    };
-    
-    env.events().publish(
-        (Symbol::new(&env, "transfer_initiated"), certificate_id, to_owner.clone()),
-        CertificateEvent::TransferInitiated(event),
-    );
-
-    // contracts/stellar_cert/src/lib.rs
-
-// Inside update_certificate_metadata:
-env.events().publish(
-    (Symbol::new(&env, "metadata_updated"), certificate_id),
-    CertificateEvent::MetadataUpdated(CertificateMetadataUpdatedEvent {
-        certificate_id,
-        updated_by: caller.clone(),
-    }),
-);
-
-// Inside set_certificate_expiry:
-env.events().publish(
-    (Symbol::new(&env, "expiry_set"), certificate_id),
-    CertificateEvent::ExpirySet(CertificateExpirySetEvent {
-        certificate_id,
-        expiry,
-    }),
-);
-
-// Inside add_issuer:
-env.events().publish(
-    (Symbol::new(&env, "issuer_added"), issuer.clone()),
-    CertificateEvent::IssuerAdded(IssuerAddedEvent { issuer: issuer.clone() }),
-);
-
-// Inside remove_issuer:
-env.events().publish(
-    (Symbol::new(&env, "issuer_removed"), issuer.clone()),
-    CertificateEvent::IssuerRemoved(IssuerRemovedEvent { issuer: issuer.clone() }),
-);

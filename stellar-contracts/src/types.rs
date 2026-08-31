@@ -75,6 +75,15 @@ pub struct CertificateIssuedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CertificateReissuedEvent {
+    pub id: String,
+    pub old_id: String,
+    pub issuer: Address,
+    pub owner: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CertificateRevokedEvent {
     pub id: String,
     pub reason: String,
@@ -255,7 +264,6 @@ pub struct CertPaginatedResult {
     pub has_next: bool,
 }
 
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransferInitiatedEvent {
@@ -264,14 +272,6 @@ pub struct TransferInitiatedEvent {
     pub from_owner: Address,
     pub to_owner: Address,
 }
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CertificateEvent {
-    TransferInitiated(TransferInitiatedEvent),
-    // ... existing variants
-}
-// contracts/stellar_cert/src/types.rs
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -302,7 +302,7 @@ pub struct IssuerRemovedEvent {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CertificateEvent {
-    // ... existing variants
+    TransferInitiated(TransferInitiatedEvent),
     MetadataUpdated(CertificateMetadataUpdatedEvent),
     ExpirySet(CertificateExpirySetEvent),
     IssuerAdded(IssuerAddedEvent),

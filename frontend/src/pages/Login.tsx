@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { LogIn, UserPlus, Shield, Eye, EyeOff } from "lucide-react";
+import { LogIn, UserPlus, Shield, Eye, EyeOff, MailCheck } from "lucide-react";
 import { authApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { getSafeRedirectPath } from "../utils/redirect";
@@ -20,6 +20,8 @@ const Login = () => {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [showVerificationPending, setShowVerificationPending] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
   const [formData, setFormData] = useState({
     email: "", password: "", confirmPassword: "",
     firstName: "", lastName: "",
@@ -49,8 +51,18 @@ const Login = () => {
           email: formData.email,
           password: formData.password,
         });
-        login(regRes.accessToken, regRes.user);
-        navigate(returnUrl, { replace: true });
+        
+        // Check if email verification is required
+        if (regRes.requiresEmailVerification) {
+          // Store the access token (as mentioned in endpoints.ts comment)
+          // but don't call login() - show verification pending screen instead
+          setRegisteredEmail(formData.email);
+          setShowVerificationPending(true);
+        } else {
+          // Email already verified or verification not required, log in normally
+          login(regRes.accessToken, regRes.user);
+          navigate(returnUrl, { replace: true });
+        }
         return;
       }
 
@@ -72,6 +84,56 @@ const Login = () => {
     if (loadingPhase === "logging-in") return <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />Signing in…</>;
     return isLogin ? <><LogIn className="w-4 h-4" />Sign In</> : <><UserPlus className="w-4 h-4" />Create Account</>;
   };
+
+  // Render verification pending screen
+  if (showVerificationPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-slate-900">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-8 w-full max-w-md">
+          <div className="flex justify-center mb-6">
+            <MailCheck className="w-12 h-12 text-blue-600 dark:text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            Check Your Email
+          </h1>
+          <p className="text-gray-600 dark:text-slate-300 text-center mb-6">
+            We've sent a verification link to <strong>{registeredEmail}</strong>.
+            Please click the link in your email to verify your account before signing in.
+          </p>
+          <div className="space-y-4">
+            <div className="bg-blue-50 dark:bg-slate-700 rounded-lg p-4">
+              <h3 className="font-medium text-blue-800 dark:text-blue-300 mb-2">What's next?</h3>
+              <ul className="text-sm text-blue-700 dark:text-blue-200 space-y-1">
+                <li>• Check your inbox (and spam folder) for our email</li>
+                <li>• Click the verification link in the email</li>
+                <li>• Return here to sign in to your account</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => {
+                setShowVerificationPending(false);
+                setIsLogin(true);
+                setFormData({ email: registeredEmail, password: "", confirmPassword: "", firstName: "", lastName: "" });
+              }}
+              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Go to Sign In
+            </button>
+            <button
+              onClick={() => {
+                setShowVerificationPending(false);
+                setIsLogin(false);
+                setFormData({ email: "", password: "", confirmPassword: "", firstName: "", lastName: "" });
+              }}
+              className="w-full py-2 px-4 bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-800 dark:text-white rounded-md"
+            >
+              Register Another Account
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-slate-900">

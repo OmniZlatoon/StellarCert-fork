@@ -17,6 +17,7 @@ import { AuditAction, AuditResourceType } from '../../audit/constants';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationType } from '../../notifications/entities/notification.entity';
 import { LoggingService } from "../../../common/logging/logging.service";
+import { UserRole } from '../../../common/constants/roles';
 
 @Injectable()
 export class CertificateTransferService {
@@ -31,7 +32,7 @@ export class CertificateTransferService {
 
   async initiateTransfer(
     dto: InitiateTransferDto,
-    initiatorId: string,
+    initiator: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const certificate = await this.certificateRepository.findOne({
@@ -41,6 +42,13 @@ export class CertificateTransferService {
     if (!certificate) {
       throw new NotFoundException(
         `Certificate with ID ${dto.certificateId} not found`,
+      );
+    }
+
+    // Verify that only the certificate's issuer or an admin can initiate a transfer
+    if (initiator.role !== UserRole.ADMIN && certificate.issuerId !== initiator.id) {
+      throw new ForbiddenException(
+        'You are not authorized to initiate a transfer for this certificate. Only the certificate issuer or an admin can perform this action.',
       );
     }
 
@@ -76,7 +84,7 @@ export class CertificateTransferService {
       toName: dto.newOwnerName,
       reason: dto.reason,
       confirmationCode,
-      initiatedBy: initiatorId,
+      initiatedBy: initiator.id,
       expiresAt,
       status: TransferStatus.PENDING,
     });
@@ -88,7 +96,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: dto.certificateId,
-      userId: initiatorId,
+      userId: initiator.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
@@ -102,7 +110,7 @@ export class CertificateTransferService {
 
     // Notify the new owner
     await this.notificationsService.createNotification(
-      initiatorId,
+      initiator.id,
       NotificationType.INFO,
       'Certificate Transfer Initiated',
       `Transfer of certificate "${certificate.title}" to ${dto.newOwnerEmail} has been initiated. Confirmation code: ${confirmationCode}`,
@@ -118,7 +126,7 @@ export class CertificateTransferService {
   async approveTransfer(
     transferId: string,
     confirmationCode: string,
-    approverId: string,
+    approver: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
@@ -158,6 +166,18 @@ export class CertificateTransferService {
       throw new NotFoundException('Associated certificate not found');
     }
 
+    if (certificate.status !== 'active') {
+      throw new ConflictException(
+        `Cannot transfer certificate with status: ${certificate.status}. Only active certificates can be transferred.`,
+      );
+    }
+
+    if (certificate.recipientEmail !== transfer.fromEmail) {
+      throw new ConflictException(
+        'Certificate owner has changed since transfer was initiated',
+      );
+    }
+
     const previousEmail = certificate.recipientEmail;
     const previousName = certificate.recipientName;
 
@@ -194,7 +214,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId: approverId,
+      userId: approver.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
@@ -214,7 +234,7 @@ export class CertificateTransferService {
 
     // Notify both parties
     await this.notificationsService.createNotification(
-      approverId,
+      approver.id,
       NotificationType.SUCCESS,
       'Certificate Transfer Completed',
       `Certificate "${certificate.title}" has been successfully transferred to ${transfer.toEmail}.`,
@@ -230,11 +250,12 @@ export class CertificateTransferService {
   async rejectTransfer(
     transferId: string,
     rejectionReason: string,
-    rejectorId: string,
+    rejector: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
       where: { id: transferId },
+      relations: ['certificate'],
     });
 
     if (!transfer) {
@@ -244,6 +265,17 @@ export class CertificateTransferService {
     if (transfer.status !== TransferStatus.PENDING) {
       throw new ConflictException(
         `Transfer is not pending. Current status: ${transfer.status}`,
+      );
+    }
+
+    // Allow rejection if user is the initiator, the certificate's issuer, or an admin
+    if (
+      transfer.initiatedBy !== rejector.id &&
+      transfer.certificate.issuerId !== rejector.id &&
+      rejector.role !== UserRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only the transfer initiator, the certificate issuer, or an admin can reject this transfer request',
       );
     }
 
@@ -257,7 +289,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId: rejectorId,
+      userId: rejector.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
@@ -274,11 +306,12 @@ export class CertificateTransferService {
 
   async cancelTransfer(
     transferId: string,
-    userId: string,
+    canceller: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
       where: { id: transferId },
+      relations: ['certificate'],
     });
 
     if (!transfer) {
@@ -291,9 +324,14 @@ export class CertificateTransferService {
       );
     }
 
-    if (transfer.initiatedBy !== userId) {
+    // Allow cancellation if user is the initiator, the certificate's issuer, or an admin
+    if (
+      transfer.initiatedBy !== canceller.id &&
+      transfer.certificate.issuerId !== canceller.id &&
+      canceller.role !== UserRole.ADMIN
+    ) {
       throw new ForbiddenException(
-        'Only the initiator can cancel a transfer request',
+        'Only the transfer initiator, the certificate issuer, or an admin can cancel this transfer request',
       );
     }
 
@@ -305,7 +343,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId,
+      userId: canceller.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,

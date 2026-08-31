@@ -78,12 +78,41 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 
 /**
  * Refresh tokens using the HttpOnly cookie sent automatically by the browser.
+ *
+ * De-duplicated + cooldown-guarded: on page load the in-memory access token is
+ * gone, so AuthContext rehydration AND every protected request's 401 handler
+ * would each hit `/auth/refresh` (which is IP rate-limited) near-simultaneously,
+ * tripping a 429. We coalesce concurrent callers onto a single in-flight request
+ * and briefly back off after a failure so a page full of 401s can't hammer it.
  */
+let _refreshInFlight: Promise<AuthResponse> | null = null;
+let _refreshCooldownUntil = 0;
+const REFRESH_COOLDOWN_MS = 10_000;
+
 const refreshTokens = async (): Promise<AuthResponse> => {
-  return apiClient<AuthResponse>('/auth/refresh', {
+  if (Date.now() < _refreshCooldownUntil) {
+    const err: ApiError = {
+      message: "Session refresh temporarily unavailable",
+      statusCode: 401,
+    };
+    throw err;
+  }
+  if (_refreshInFlight) return _refreshInFlight;
+
+  _refreshInFlight = apiClient<AuthResponse>('/auth/refresh', {
     method: 'POST',
     skipAuth: true,
-  });
+  })
+    .catch((err) => {
+      // Back off briefly so repeated 401s during this load don't spam refresh.
+      _refreshCooldownUntil = Date.now() + REFRESH_COOLDOWN_MS;
+      throw err;
+    })
+    .finally(() => {
+      _refreshInFlight = null;
+    });
+
+  return _refreshInFlight;
 };
 
 /**
@@ -145,7 +174,10 @@ export async function apiClient<T>(
           statusCode: response.status,
         }));
 
-        if (response.status === 401 && !hasTriedRefresh) {
+        // Never attempt a refresh for the refresh call itself (skipAuth) — that
+        // would recurse into refreshTokens and, with the shared in-flight
+        // promise, deadlock the request against itself.
+        if (response.status === 401 && !hasTriedRefresh && !options.skipAuth) {
           try {
             const refreshResponse = await refreshTokens();
             tokenStorage.setAccessToken(refreshResponse.accessToken);
@@ -213,6 +245,42 @@ export async function apiClient<T>(
     // For non-GET requests, make a single attempt
     return attemptRequest(config.maxRetries + 1, false);
   }
+}
+
+/**
+ * Raw request helper for endpoints that need the underlying `Response`
+ * (file/blob downloads and multipart uploads) rather than the parsed,
+ * envelope-unwrapped JSON that `apiClient` returns. It attaches the bearer
+ * token and performs a single transparent refresh-and-retry on a 401, but does
+ * NOT force a JSON `Content-Type` — so callers can send `FormData` (letting the
+ * browser set the multipart boundary) or their own JSON body.
+ */
+export async function apiClientRaw(
+  url: string,
+  options: RequestInit & { skipAuth?: boolean } = {},
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+
+  if (!options.skipAuth) {
+    const token = tokenStorage.getAccessToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  let response = await fetch(url, { ...options, headers, credentials: "include" });
+
+  if (response.status === 401 && !options.skipAuth) {
+    try {
+      const refreshResponse = await refreshTokens();
+      tokenStorage.setAccessToken(refreshResponse.accessToken);
+      headers.set("Authorization", `Bearer ${refreshResponse.accessToken}`);
+      notifyTokenRefreshed(refreshResponse.accessToken, refreshResponse.user);
+      response = await fetch(url, { ...options, headers, credentials: "include" });
+    } catch {
+      tokenStorage.clearTokens();
+    }
+  }
+
+  return response;
 }
 
 // Dummy data generators
@@ -684,7 +752,7 @@ export const certificateApi = {
       const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
       return new Blob([csv], { type: "text/csv" });
     }
-    const response = await fetch(`${API_URL}/certificates/export`, {
+    const response = await apiClientRaw(`${API_URL}/certificates/export`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -742,7 +810,7 @@ export const certificateApi = {
       return new Blob([csv], { type: "text/csv" });
     }
 
-    const response = await fetch(`${API_URL}/certificates/export/all`, {
+    const response = await apiClientRaw(`${API_URL}/certificates/export/all`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -932,12 +1000,9 @@ export const registerApi = async (
 export const authApi = {
   login: loginApi,
   register: registerApi,
-  refresh: async (): Promise<AuthResponse> => {
-    return apiClient<AuthResponse>('/auth/refresh', {
-      method: 'POST',
-      skipAuth: true,
-    });
-  },
+  // Shares the de-duplicated/cooldown-guarded refresh so AuthContext rehydration
+  // and apiClient's 401 handler coalesce onto a single /auth/refresh request.
+  refresh: (): Promise<AuthResponse> => refreshTokens(),
   logout: async (): Promise<void> => {
     try {
       if (!USE_DUMMY_DATA) {
@@ -1269,14 +1334,13 @@ export const issuerProfileApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/users/profile/picture`, {
+    // Multipart upload: route through apiClientRaw so the browser sets the
+    // multipart boundary (apiClient would force application/json and break it),
+    // while still getting auth + 401-refresh handling.
+    const response = await apiClientRaw(`${API_URL}/users/profile/picture`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokenStorage.getAccessToken() ?? ""}`,
-      },
       body: formData,
     });
-
     if (!response.ok) {
       const errorData: ApiError = await response.json().catch(() => ({
         message: response.statusText || "Profile picture upload failed",
@@ -1284,7 +1348,6 @@ export const issuerProfileApi = {
       }));
       throw errorData;
     }
-
     return response.json();
   },
 };
