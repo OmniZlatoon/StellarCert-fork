@@ -7,6 +7,7 @@ import { NotificationProvider } from "./context/NotificationContext";
 import { AuthProvider } from "./context/AuthContext";
 import ToastContainer from "./components/Toast";
 import { UserRole } from "./api";
+import { WALLET_ALLOWED_ROLES } from "./constants/routeAccess";
 
 // Lazy load page components for code splitting
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -54,16 +55,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPassword />} />
 
                 <Route
-                  element={
-                    <ProtectedRoute
-                      allowedRoles={[
-                        UserRole.RECIPIENT,
-                        UserRole.VERIFIER,
-                        UserRole.ISSUER,
-                        UserRole.ADMIN,
-                      ]}
-                    />
-                  }
+                  element={<ProtectedRoute allowedRoles={[...WALLET_ALLOWED_ROLES]} />}
                 >
                   <Route path="/wallet" element={<CertificateWallet />} />
                 </Route>
