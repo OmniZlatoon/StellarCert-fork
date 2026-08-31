@@ -17,6 +17,7 @@ import { AuditAction, AuditResourceType } from '../../audit/constants';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationType } from '../../notifications/entities/notification.entity';
 import { LoggingService } from "../../../common/logging/logging.service";
+import { UserRole } from '../../../common/constants/roles';
 
 @Injectable()
 export class CertificateTransferService {
@@ -84,7 +85,7 @@ export class CertificateTransferService {
       toName: dto.newOwnerName,
       reason: dto.reason,
       confirmationCode,
-      initiatedBy: initiatorId,
+      initiatedBy: initiator.id,
       expiresAt,
       status: TransferStatus.PENDING,
     });
@@ -96,7 +97,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: dto.certificateId,
-      userId: initiatorId,
+      userId: initiator.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
@@ -110,7 +111,7 @@ export class CertificateTransferService {
 
     // Notify the new owner
     await this.notificationsService.createNotification(
-      initiatorId,
+      initiator.id,
       NotificationType.INFO,
       'Certificate Transfer Initiated',
       `Transfer of certificate "${certificate.title}" to ${dto.newOwnerEmail} has been initiated. Confirmation code: ${confirmationCode}`,
