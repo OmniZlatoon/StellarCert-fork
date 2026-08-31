@@ -175,7 +175,13 @@ fn test_get_certificates_by_issuer_rejects_oversized_limit() {
 
     // A limit above the enforced cap must panic before any storage
     // is scanned, regardless of how many certificates exist.
-    client.get_certificates_by_issuer(&issuer, &Pagination { page: 1, limit: u32::MAX });
+    client.get_certificates_by_issuer(
+        &issuer,
+        &Pagination {
+            page: 1,
+            limit: u32::MAX,
+        },
+    );
 }
 
 #[test]
@@ -187,7 +193,13 @@ fn test_get_certificates_by_owner_rejects_oversized_limit() {
 
     let owner = Address::generate(&env);
 
-    client.get_certificates_by_owner(&owner, &Pagination { page: 1, limit: 101 });
+    client.get_certificates_by_owner(
+        &owner,
+        &Pagination {
+            page: 1,
+            limit: 101,
+        },
+    );
 }
 
 #[test]
@@ -199,7 +211,13 @@ fn test_get_certificates_by_issuer_accepts_limit_at_max() {
     let issuer = Address::generate(&env);
 
     // Exactly at the cap should still succeed (empty result, no certs issued).
-    let result = client.get_certificates_by_issuer(&issuer, &Pagination { page: 1, limit: 100 });
+    let result = client.get_certificates_by_issuer(
+        &issuer,
+        &Pagination {
+            page: 1,
+            limit: 100,
+        },
+    );
     assert_eq!(result.total, 0);
     assert_eq!(result.data.len(), 0);
     assert!(!result.has_next);
