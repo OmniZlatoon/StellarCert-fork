@@ -53,13 +53,13 @@ export class CertificateTransferController {
   @ApiResponse({ status: 404, description: 'Transfer not found' })
   async approveTransfer(
     @Body() dto: ApproveTransferDto,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: any,
     @Req() req: any,
   ) {
     return this.transferService.approveTransfer(
       dto.transferId,
       dto.confirmationCode || '',
-      userId,
+      user,
       req.ip,
     );
   }
@@ -70,13 +70,13 @@ export class CertificateTransferController {
   @ApiResponse({ status: 200, description: 'Transfer rejected successfully' })
   async rejectTransfer(
     @Body() dto: RejectTransferDto,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: any,
     @Req() req: any,
   ) {
     return this.transferService.rejectTransfer(
       dto.transferId,
       dto.reason || 'No reason provided',
-      userId,
+      user,
       req.ip,
     );
   }

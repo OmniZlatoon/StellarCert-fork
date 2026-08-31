@@ -126,7 +126,7 @@ export class CertificateTransferService {
   async approveTransfer(
     transferId: string,
     confirmationCode: string,
-    approverId: string,
+    approver: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
@@ -294,11 +294,12 @@ export class CertificateTransferService {
 
   async cancelTransfer(
     transferId: string,
-    userId: string,
+    canceller: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const transfer = await this.transferRepository.findOne({
       where: { id: transferId },
+      relations: ['certificate'],
     });
 
     if (!transfer) {
@@ -311,9 +312,14 @@ export class CertificateTransferService {
       );
     }
 
-    if (transfer.initiatedBy !== userId) {
+    // Allow cancellation if user is the initiator, the certificate's issuer, or an admin
+    if (
+      transfer.initiatedBy !== canceller.id &&
+      transfer.certificate.issuerId !== canceller.id &&
+      canceller.role !== UserRole.ADMIN
+    ) {
       throw new ForbiddenException(
-        'Only the initiator can cancel a transfer request',
+        'Only the transfer initiator, the certificate issuer, or an admin can cancel this transfer request',
       );
     }
 
@@ -325,7 +331,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId,
+      userId: canceller.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
