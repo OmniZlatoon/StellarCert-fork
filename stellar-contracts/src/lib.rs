@@ -1371,11 +1371,21 @@ impl CertificateContract {
         page.saturating_sub(1).saturating_mul(limit)
     }
 
+    /// Hard ceiling on `Pagination::limit` for certificate listings. Without
+    /// this, a caller could pass e.g. `u32::MAX` and force a single
+    /// invocation to walk the entire certificate list, exhausting the
+    /// transaction's compute budget.
+    const MAX_PAGE_SIZE: u32 = 100;
+
     fn paginate_certificates(
         env: &Env,
         cert_ids: Vec<String>,
         pagination: Pagination,
     ) -> CertPaginatedResult {
+        if pagination.limit > Self::MAX_PAGE_SIZE {
+            panic!("Pagination limit exceeds maximum allowed");
+        }
+
         let total = cert_ids.len();
         let mut page_data = Vec::<Certificate>::new(env);
 
