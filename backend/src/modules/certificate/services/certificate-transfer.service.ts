@@ -31,7 +31,7 @@ export class CertificateTransferService {
 
   async initiateTransfer(
     dto: InitiateTransferDto,
-    initiatorId: string,
+    initiator: { id: string; role: string },
     ipAddress?: string,
   ): Promise<CertificateTransfer> {
     const certificate = await this.certificateRepository.findOne({
@@ -41,6 +41,14 @@ export class CertificateTransferService {
     if (!certificate) {
       throw new NotFoundException(
         `Certificate with ID ${dto.certificateId} not found`,
+      );
+    }
+
+    // Verify that only the certificate's issuer or an admin can initiate a transfer
+    const UserRole = { ADMIN: 'admin', ISSUER: 'issuer' };
+    if (initiator.role !== UserRole.ADMIN && certificate.issuerId !== initiator.id) {
+      throw new ForbiddenException(
+        'You are not authorized to initiate a transfer for this certificate. Only the certificate issuer or an admin can perform this action.',
       );
     }
 
