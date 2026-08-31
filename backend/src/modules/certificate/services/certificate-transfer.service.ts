@@ -214,7 +214,7 @@ export class CertificateTransferService {
       action: AuditAction.CERTIFICATE_UPDATE,
       resourceType: AuditResourceType.CERTIFICATE,
       resourceId: transfer.certificateId,
-      userId: approverId,
+      userId: approver.id,
       ipAddress: ipAddress || 'unknown',
       metadata: {
         transferId: savedTransfer.id,
@@ -234,7 +234,7 @@ export class CertificateTransferService {
 
     // Notify both parties
     await this.notificationsService.createNotification(
-      approverId,
+      approver.id,
       NotificationType.SUCCESS,
       'Certificate Transfer Completed',
       `Certificate "${certificate.title}" has been successfully transferred to ${transfer.toEmail}.`,
