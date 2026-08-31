@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { apiClient, API_URL } from '../api';
-import { tokenStorage } from '../api/tokens';
+import { tokenStorage, setTokenRefreshCallback } from '../api/tokens';
 import { useAuth } from './AuthContext';
 
 export type NotificationType = 'info' | 'success' | 'error';
@@ -90,26 +90,34 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         fetchNotifications();
         connectSocket(token);
 
-        // #563 — reconnect with the new token whenever it is rotated.
+        // #786 — reconnect with a rotated token from *other* tabs.
         const handleTokenRotation = (e: StorageEvent) => {
-            if (e.key === 'accessToken' && e.newValue && e.newValue !== e.oldValue) {
+            if (e.key === 'access_token' && e.newValue && e.newValue !== e.oldValue) {
                 connectSocket(e.newValue);
             }
         };
 
-useEffect(() => {
-  setTokenRefreshCallback((newToken) => {
-    connectSocket(newToken); // reconnect socket with fresh token
-  });
-
-  return () => setTokenRefreshCallback(null); // cleanup on unmount
-}, []);
+        window.addEventListener('storage', handleTokenRotation);
 
         return () => {
             window.removeEventListener('storage', handleTokenRotation);
             socketRef.current?.disconnect();
         };
     }, [isAuthenticated]);
+
+    // #786 — the `storage` event only fires in *other* tabs, so when apiClient
+    // silently refreshes the access token in this tab the socket would never be
+    // reconnected. Hook into the same-tab token refresh callback instead so the
+    // socket is recreated with the fresh token and realtime notifications keep
+    // flowing.
+    useEffect(() => {
+        setTokenRefreshCallback((newToken) => {
+            if (!socketRef.current) return;
+            connectSocket(newToken);
+        });
+
+        return () => setTokenRefreshCallback(() => {});
+    }, []);
 
     const markAsRead = async (id: string) => {
         try {

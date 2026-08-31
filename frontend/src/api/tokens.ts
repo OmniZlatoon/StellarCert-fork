@@ -20,22 +20,6 @@ let _inMemoryAccessToken: string | null = null;
 export const tokenStorage = {
   getAccessToken: (): string | null => _inMemoryAccessToken,
   setAccessToken: (token: string): void => {
-
-    // api/tokens.ts
-type TokenRefreshCallback = (newToken: string) => void;
-let onTokenRefresh: TokenRefreshCallback | null = null;
-
-export function setTokenRefreshCallback(cb: TokenRefreshCallback) {
-  onTokenRefresh = cb;
-}
-
-export const tokenStorage = {
-  setAccessToken(token: string) {
-    localStorage.setItem('access_token', token); // existing line 22
-    onTokenRefresh?.(token); // <-- add: notify same-tab listeners
-  },
-  // ...
-};
     _inMemoryAccessToken = token;
   },
   clearTokens: (): void => {
