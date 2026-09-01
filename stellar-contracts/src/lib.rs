@@ -443,7 +443,7 @@ impl CertificateContract {
         let new_cert = Certificate {
             id: new_id.clone(),
             issuer: issuer.clone(),
-            owner: new_owner.unwrap_or(original_cert.owner),
+            owner: new_owner.unwrap_or(original_cert.owner.clone()),
             status: CertificateStatus::Active,
             metadata_uri: new_metadata_uri,
             issued_at: env.ledger().timestamp(),
@@ -462,6 +462,7 @@ impl CertificateContract {
             (symbol_short!("reissued"), new_id.clone()),
             CertificateReissuedEvent {
                 id: new_id,
+                old_id: old_id.clone(),
                 issuer,
                 owner: new_cert.owner,
             },
